@@ -1,0 +1,46 @@
+project_id = "natillera-manager"
+
+[api]
+enabled = true
+port = 44121
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 44122
+shadow_port = 44120
+major_version = 17
+
+[db.seed]
+enabled = false
+
+[db.pooler]
+enabled = false
+
+[realtime]
+enabled = true
+
+[studio]
+enabled = true
+port = 44123
+api_url = "http://127.0.0.1"
+
+[local_smtp]
+enabled = true
+port = 44124
+smtp_port = 44125
+pop3_port = 44126
+
+[auth.email.template.magic_link]
+subject = "Codigo de ingreso Natillera"
+content_path = "./supabase/templates/magic_link.html"
+
+[storage]
+enabled = true
+
+[analytics]
+enabled = false
+
+[edge_runtime]
+enabled = false
