@@ -32,6 +32,10 @@ const months = [
 
 type ViewState = 'loading' | 'anonymous' | 'ready' | 'no-access' | 'error';
 
+function makeIdempotencyKey() {
+  return `ui-${crypto.randomUUID()}`;
+}
+
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [viewState, setViewState] = useState<ViewState>('loading');
@@ -359,7 +363,7 @@ function MemberForm({
       <form onSubmit={submit} className="form-grid">
         <label>
           Editar socio
-          <select value={editingId} onChange={(event) => loadEditing(event.target.value)}>
+          <select aria-label="Editar socio" value={editingId} onChange={(event) => loadEditing(event.target.value)}>
             <option value="">Nuevo socio</option>
             {cycleMembers.map((item) => <option key={item.id} value={item.id}>{item.member?.display_name}</option>)}
           </select>
@@ -408,7 +412,13 @@ function ContributionForm({
   const [effectiveDate, setEffectiveDate] = useState('2026-09-23');
   const [appliedMonth, setAppliedMonth] = useState(10);
   const [method, setMethod] = useState('bank_transfer');
+  const [idempotencyKey, setIdempotencyKey] = useState(makeIdempotencyKey);
   const [pending, setPending] = useState(false);
+  const draftSignature = `${cycleMemberId}|${amountText}|${effectiveDate}|${cycle.year}|${appliedMonth}|${method}`;
+
+  useEffect(() => {
+    setIdempotencyKey(makeIdempotencyKey());
+  }, [draftSignature]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -421,7 +431,7 @@ function ContributionForm({
         appliedYear: cycle.year,
         appliedMonth,
         method: method as never,
-        idempotencyKey: crypto.randomUUID()
+        idempotencyKey
       });
       await registerContribution({
         cycleMemberId,
@@ -433,6 +443,7 @@ function ContributionForm({
         idempotencyKey: valid.idempotencyKey
       });
       await onSaved();
+      setIdempotencyKey(makeIdempotencyKey());
     } catch (error) {
       onError(error);
     } finally {
@@ -446,7 +457,7 @@ function ContributionForm({
       <form onSubmit={submit} className="form-grid">
         <label>
           Socio
-          <select value={cycleMemberId} onChange={(event) => setCycleMemberId(event.target.value)} required disabled={pending}>
+          <select aria-label="Socio del aporte" value={cycleMemberId} onChange={(event) => setCycleMemberId(event.target.value)} required disabled={pending}>
             <option value="">Seleccionar</option>
             {cycleMembers.map((item) => <option key={item.id} value={item.id}>{item.member?.display_name}</option>)}
           </select>

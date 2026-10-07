@@ -23,6 +23,7 @@ export interface ContributionYield {
   effectiveDate: CivilDate;
   days: number;
   yieldAmount: Decimal;
+  eligibleAtCut: boolean;
 }
 
 export interface WithdrawalPreview {
@@ -53,16 +54,16 @@ export function calculateContributionYield(input: YieldContributionInput, cutDat
     throw new Error('La tasa no puede ser negativa.');
   }
   if (compareCivilDates(effectiveDate, cutDate) > 0) {
-    return { amount, effectiveDate, days: 0, yieldAmount: new Decimal(0) };
+    return { amount, effectiveDate, days: 0, yieldAmount: new Decimal(0), eligibleAtCut: false };
   }
 
   const days = daysBetween(effectiveDate, cutDate);
   if (days <= 0 || rate.eq(0)) {
-    return { amount, effectiveDate, days: Math.max(0, days), yieldAmount: new Decimal(0) };
+    return { amount, effectiveDate, days: Math.max(0, days), yieldAmount: new Decimal(0), eligibleAtCut: true };
   }
 
   const factor = Decimal.pow(rate.plus(1), new Decimal(days).div(365)).minus(1);
-  return { amount, effectiveDate, days, yieldAmount: amount.mul(factor) };
+  return { amount, effectiveDate, days, yieldAmount: amount.mul(factor), eligibleAtCut: true };
 }
 
 export function previewWithdrawal(input: WithdrawalPreviewInput): WithdrawalPreview {
@@ -70,8 +71,14 @@ export function previewWithdrawal(input: WithdrawalPreviewInput): WithdrawalPrev
   const contributionYields = input.contributions.map((contribution) =>
     calculateContributionYield(contribution, cutDate, input.annualEffectiveRate),
   );
-  const contributed = contributionYields.reduce((sum, item) => sum.plus(item.amount), new Decimal(0));
-  const recognizedYield = contributionYields.reduce((sum, item) => sum.plus(item.yieldAmount), new Decimal(0));
+  const contributed = contributionYields.reduce(
+    (sum, item) => item.eligibleAtCut ? sum.plus(item.amount) : sum,
+    new Decimal(0),
+  );
+  const recognizedYield = contributionYields.reduce(
+    (sum, item) => item.eligibleAtCut ? sum.plus(item.yieldAmount) : sum,
+    new Decimal(0),
+  );
   const recognizedYieldRounded = roundCurrency(recognizedYield);
   const pendingNetPrizes = new Decimal(input.pendingNetPrizes);
   const debts = new Decimal(input.debts);

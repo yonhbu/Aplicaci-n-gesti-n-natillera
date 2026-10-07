@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -24,8 +24,21 @@ function copyDirectory(name) {
   const target = path.join(targetSupabase, name);
   rmSync(target, { recursive: true, force: true });
   if (existsSync(source)) {
-    cpSync(source, target, { recursive: true });
+    copyRecursive(source, target);
   }
+}
+
+function copyRecursive(source, target) {
+  const stat = statSync(source);
+  if (stat.isDirectory()) {
+    mkdirSync(target, { recursive: true });
+    for (const entry of readdirSync(source)) {
+      copyRecursive(path.join(source, entry), path.join(target, entry));
+    }
+    return;
+  }
+  mkdirSync(path.dirname(target), { recursive: true });
+  copyFileSync(source, target);
 }
 
 mkdirSync(targetSupabase, { recursive: true });

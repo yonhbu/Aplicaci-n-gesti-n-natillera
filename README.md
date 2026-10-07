@@ -10,11 +10,14 @@ Estado actual: `NAT-HU-001 READY_FOR_REVIEW`.
 - Resolucion de workspace/ciclo sin auto-crear acceso desde el cliente.
 - Socios del ciclo y configuracion descriptiva de cuota/rango.
 - Registro persistente de aportes de ahorro mediante RPC idempotente.
+- Guardado transaccional de socios/participaciones mediante RPC.
 - Calculo puro de rendimiento reconocido por fechas y previsualizacion de retiro.
 - Prevalidacion local de fuentes legacy elegidas por el usuario.
 - Exportacion del alcance implementado con version de formato.
 
 No incluye prestamos, pollas, liquidaciones reales, banco, comprobantes privados ni migracion completa.
+
+La HU-001 sigue en `READY_FOR_REVIEW`; las correcciones de revision no la convierten en migracion completa ni en reemplazo operativo.
 
 ## Comandos
 

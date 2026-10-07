@@ -19,3 +19,11 @@ Motivo: idempotencia, validacion de membresia y auditoria deben ocurrir en la mi
 Decision: HU-001 inspecciona CSV/JSON seleccionados por el usuario en el navegador y no versiona ni importa datos reales.
 
 Motivo: el respaldo completo y los comprobantes requieren una HU de migracion con conciliacion y decisiones explicitas.
+
+## 2026-10-06 - Correcciones bloqueantes de revision HU-001
+
+Hecho: la revision de HU-001 identifico riesgos de duplicacion por reintento, validaciones SQL incompletas, guardado no atomico de socios, aportes futuros incluidos en retiro, inventario legacy insuficiente y mezcla posible de DEV/TEST.
+
+Decision: mantener `READY_FOR_REVIEW` y corregir sin ampliar alcance funcional. Socios/participaciones se guardan por RPC transaccional; aportes se validan en servidor; identidades de participacion son inmutables; TEST se selecciona de forma explicita; y la prevalidacion legacy reporta inventario por fuente.
+
+Motivo: aceptar HU-001 con esos defectos crearia riesgo financiero real antes de migrar o reemplazar la app operativa.

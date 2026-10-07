@@ -28,15 +28,26 @@ const admin = createClient(supabaseUrl, supabaseSecretKey, {
   }
 });
 
-async function ensureAuthUser(email: string) {
-  const users = await admin.auth.admin.listUsers();
-  if (users.error) {
-    throw new Error(users.error.message);
-  }
+if (process.env.SUPABASE_ENV === 'test' && /4412[12]/.test(supabaseUrl)) {
+  throw new Error('Bootstrap TEST se nego a usar puertos DEV.');
+}
 
-  const existing = users.data.users.find((candidate) => candidate.email?.toLowerCase() === email);
-  if (existing) {
-    return existing;
+async function ensureAuthUser(email: string) {
+  let page = 1;
+  while (true) {
+    const users = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (users.error) {
+      throw new Error(users.error.message);
+    }
+
+    const existing = users.data.users.find((candidate) => candidate.email?.toLowerCase() === email);
+    if (existing) {
+      return existing;
+    }
+    if (users.data.users.length < 1000) {
+      break;
+    }
+    page += 1;
   }
 
   const created = await admin.auth.admin.createUser({ email, email_confirm: true });
@@ -47,11 +58,23 @@ async function ensureAuthUser(email: string) {
 }
 
 async function main() {
-  const workspaceResult = await admin
+  const existingWorkspace = await admin
     .from('workspaces')
-    .upsert({ name: workspaceName }, { onConflict: 'name' })
     .select('*')
-    .single();
+    .eq('name', workspaceName)
+    .maybeSingle();
+
+  if (existingWorkspace.error) {
+    throw new Error(existingWorkspace.error.message);
+  }
+
+  const workspaceResult = existingWorkspace.data
+    ? { data: existingWorkspace.data, error: null }
+    : await admin
+      .from('workspaces')
+      .insert({ name: workspaceName })
+      .select('*')
+      .single();
 
   if (workspaceResult.error || !workspaceResult.data) {
     throw new Error(workspaceResult.error?.message ?? 'No fue posible asegurar el workspace.');
@@ -59,9 +82,22 @@ async function main() {
 
   const workspace = workspaceResult.data;
 
-  const cycleResult = await admin
+  const existingCycle = await admin
     .from('cycles')
-    .upsert(
+    .select('*')
+    .eq('workspace_id', workspace.id)
+    .eq('year', cycleYear)
+    .maybeSingle();
+
+  if (existingCycle.error) {
+    throw new Error(existingCycle.error.message);
+  }
+
+  const cycleResult = existingCycle.data
+    ? { data: existingCycle.data, error: null }
+    : await admin
+    .from('cycles')
+    .insert(
       {
         workspace_id: workspace.id,
         year: cycleYear,
@@ -70,13 +106,23 @@ async function main() {
         closes_on: cycleClose,
         status: 'active'
       },
-      { onConflict: 'workspace_id,year' },
     )
     .select('*')
     .single();
 
   if (cycleResult.error || !cycleResult.data) {
     throw new Error(cycleResult.error?.message ?? 'No fue posible asegurar el ciclo.');
+  }
+
+  if (existingCycle.data) {
+    const mismatches = [
+      existingCycle.data.name !== cycleName ? 'nombre' : '',
+      existingCycle.data.starts_on !== cycleStart ? 'fecha inicial' : '',
+      existingCycle.data.closes_on !== cycleClose ? 'fecha de cierre' : ''
+    ].filter(Boolean);
+    if (mismatches.length > 0) {
+      console.warn(`Ciclo existente conservado sin cambios; difiere en: ${mismatches.join(', ')}.`);
+    }
   }
 
   for (const email of adminEmails) {

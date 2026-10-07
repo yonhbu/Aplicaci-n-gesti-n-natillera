@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import type { SavingsContribution } from '../lib/types';
+import { fetchAllPages } from './pagination';
 
 export interface RegisterContributionInput {
   cycleMemberId: string;
@@ -12,18 +13,21 @@ export interface RegisterContributionInput {
 }
 
 export async function listSavingsContributions(cycleId: string): Promise<SavingsContribution[]> {
-  const { data, error } = await supabase
-    .from('savings_contributions')
-    .select('*')
-    .eq('cycle_id', cycleId)
-    .order('created_at', { ascending: false })
-    .limit(5000);
+  return fetchAllPages(async (from, to) => {
+    const { data, error } = await supabase
+      .from('savings_contributions')
+      .select('*')
+      .eq('cycle_id', cycleId)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, to);
 
-  if (error) {
-    throw new Error(error.message);
-  }
+    if (error) {
+      throw new Error(error.message);
+    }
 
-  return (data ?? []) as SavingsContribution[];
+    return (data ?? []) as SavingsContribution[];
+  });
 }
 
 export async function registerContribution(input: RegisterContributionInput): Promise<SavingsContribution> {

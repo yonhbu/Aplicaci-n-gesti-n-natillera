@@ -60,7 +60,10 @@ describe('previewWithdrawal', () => {
     });
 
     expect(preview.contributionYields[0].days).toBe(0);
+    expect(preview.contributionYields[0].eligibleAtCut).toBe(false);
+    expect(preview.contributed.toFixed(2)).toBe('0.00');
     expect(preview.recognizedYield.toFixed(2)).toBe('0.00');
+    expect(preview.net.toFixed(2)).toBe('0.00');
   });
 
   it('maneja tasa cero, corte igual a fecha y neto negativo', () => {

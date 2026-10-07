@@ -8,6 +8,7 @@ test-results/
 !.env.example
 .supabase/
 .supabase-test/
+supabase/.temp/
 incoming/
 *.zip
 *.log

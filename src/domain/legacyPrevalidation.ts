@@ -14,10 +14,17 @@ export interface LegacyInventory {
   csvSections: Record<string, number>;
   jsonCollections: Record<string, number>;
   detectedMembers: number;
+  csvContributions: number;
+  jsonContributions: number;
   detectedContributions: number;
   detectedLoans: number;
   detectedPrizes: number;
-  paymentMarks: number;
+  paymentMarks: {
+    total: number;
+    true: number;
+    false: number;
+    other: number;
+  };
   attachmentReferences: number;
 }
 
@@ -96,7 +103,16 @@ export function prevalidateLegacySources(input: { csvText?: string; jsonText?: s
       )
     : {};
 
-  const paymentMarks = json?.pagos ? Object.keys(json.pagos).length : 0;
+  if (json && Object.keys(json).length === 0) {
+    issues.push({
+      severity: 'warning',
+      code: 'JSON_EMPTY_BACKUP',
+      source: 'json',
+      message: 'El JSON esta vacio; no puede certificar respaldo ni migracion.'
+    });
+  }
+
+  const paymentMarks = countPaymentMarks(json?.pagos);
   const attachmentReferences = countAttachmentReferences(json);
 
   if (csvContributions.length > 0 && json?.cuotas && json.cuotas.length !== csvContributions.length) {
@@ -114,9 +130,11 @@ export function prevalidateLegacySources(input: { csvText?: string; jsonText?: s
       csvSections: Object.fromEntries(csvSections.map((section) => [section.name, section.rows.length])),
       jsonCollections: jsonCollectionCounts,
       detectedMembers: detectedMembers.size,
-      detectedContributions: csvContributions.length + (json?.cuotas?.length ?? 0),
+      csvContributions: csvContributions.length,
+      jsonContributions: json?.cuotas?.length ?? 0,
+      detectedContributions: Math.max(csvContributions.length, json?.cuotas?.length ?? 0),
       detectedLoans: countCsvSection(csvSections, 'PRESTAMOS') + (json?.prestamos?.length ?? 0),
-      detectedPrizes: countCsvSection(csvSections, 'PREMIOS') + (json?.premios?.length ?? 0),
+      detectedPrizes: countCsvSectionsContaining(csvSections, 'PREMIOS') + (json?.premios?.length ?? 0),
       paymentMarks,
       attachmentReferences
     },
@@ -217,6 +235,17 @@ function parseLegacyJson(text: string, issues: LegacyIssue[]): LegacyJson | null
           source: 'json',
           message: `${key}: debe ser una lista.`
         });
+      } else if (Array.isArray(record[key])) {
+        record[key].forEach((item, index) => {
+          if (!item || typeof item !== 'object' || Array.isArray(item)) {
+            issues.push({
+              severity: 'error',
+              code: 'JSON_SCHEMA_ERROR',
+              source: 'json',
+              message: `${key}.${index}: debe ser un objeto.`
+            });
+          }
+        });
       }
     }
     if ('pagos' in record && (!record.pagos || typeof record.pagos !== 'object' || Array.isArray(record.pagos))) {
@@ -274,6 +303,12 @@ function countCsvSection(sections: ParsedSection[], name: string): number {
   return sections.find((section) => normalizeSectionName(section.name) === name)?.rows.length ?? 0;
 }
 
+function countCsvSectionsContaining(sections: ParsedSection[], name: string): number {
+  return sections
+    .filter((section) => normalizeSectionName(section.name).includes(name))
+    .reduce((sum, section) => sum + section.rows.length, 0);
+}
+
 function normalizeSectionName(value: string): string {
   return value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toUpperCase();
 }
@@ -293,11 +328,29 @@ function countAttachmentReferences(json: Record<string, unknown> | null): number
     }
     for (const [key, nested] of Object.entries(value)) {
       if (/comprobante|adjunto|imagen|foto/i.test(key) && nested) {
-        count += 1;
+        count += Array.isArray(nested) ? nested.filter(Boolean).length : 1;
       }
       visit(nested);
     }
   };
   visit(json);
   return count;
+}
+
+function countPaymentMarks(pagos: Record<string, unknown> | undefined) {
+  const result = { total: 0, true: 0, false: 0, other: 0 };
+  if (!pagos) {
+    return result;
+  }
+  for (const value of Object.values(pagos)) {
+    result.total += 1;
+    if (value === true) {
+      result.true += 1;
+    } else if (value === false) {
+      result.false += 1;
+    } else {
+      result.other += 1;
+    }
+  }
+  return result;
 }
