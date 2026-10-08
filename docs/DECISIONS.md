@@ -27,3 +27,9 @@ Hecho: la revision de HU-001 identifico riesgos de duplicacion por reintento, va
 Decision: mantener `READY_FOR_REVIEW` y corregir sin ampliar alcance funcional. Socios/participaciones se guardan por RPC transaccional; aportes se validan en servidor; identidades de participacion son inmutables; TEST se selecciona de forma explicita; y la prevalidacion legacy reporta inventario por fuente.
 
 Motivo: aceptar HU-001 con esos defectos crearia riesgo financiero real antes de migrar o reemplazar la app operativa.
+
+## 2026-10-07 - Cierre tecnico de bloque A
+
+Decision: persistir localmente la operacion de aporte pendiente con clave idempotente y payload canonico hasta resolverla, y reforzar SQL con fechas finitas y grants explicitos.
+
+Motivo: una respuesta perdida o recarga no debe convertir un reintento ambiguo en otro aporte; las politicas RLS no deben depender de privilegios heredados; y el servidor debe rechazar fechas no finitas aunque el frontend valide.

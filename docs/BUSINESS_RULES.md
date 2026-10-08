@@ -9,6 +9,8 @@
 - HU-001 registra aportes; no corrige ni borra movimientos monetarios publicados.
 - El servidor rechaza aportes si el ciclo no esta activo, el socio no participa en ahorro, el mes aplicado sale del rango de participacion o el ano no corresponde al ciclo.
 - La idempotencia se conserva desde el formulario hasta la RPC: repetir la misma operacion con la misma clave devuelve el mismo aporte; la misma clave con contenido distinto se rechaza.
+- Un intento de aporte pendiente conserva su clave y carga canonica entre recargas hasta resolverse. Cambios de formato monetario equivalentes no crean otra operacion.
+- Fechas obligatorias de aportes y ciclos deben ser fechas civiles finitas; `infinity`, `-infinity` y NULL se rechazan en servidor.
 
 ## Retiro anticipado
 

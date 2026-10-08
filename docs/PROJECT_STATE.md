@@ -17,6 +17,7 @@ Implementado:
 - Export HU-001 versionado.
 - Scripts de build, tests, secretos, DEV/TEST Supabase y Netlify.
 - Correcciones de revision HU-001: idempotencia de formulario, validaciones SQL, RPC transaccional para socios, identidades inmutables, retiro sin capital futuro, prevalidacion legacy robustecida, paginacion completa, bootstrap no destructivo y TEST aislado.
+- Cierre tecnico A: intento pendiente de aporte persistente ante recarga/error ambiguo, payload canonico para reintento, fechas SQL finitas, grant explicito del helper RLS y salida TEST sin llaves locales.
 
 Pendiente de revision:
 
@@ -28,10 +29,10 @@ Pendiente de revision:
 
 - `npm run check:secrets`: aprobado.
 - `npm run typecheck`: aprobado.
-- `npm run test`: 5 archivos, 16 pruebas aprobadas.
+- `npm run test`: 6 archivos, 18 pruebas aprobadas.
 - `npm run build`: aprobado.
 - `npm run test:infra:reset`: aprobado sobre `.supabase-test`.
-- `npm run test:rls`: 1 archivo SQL, 24 pruebas aprobadas.
+- `npm run test:rls`: 1 archivo SQL, 30 pruebas aprobadas.
 - `npm run test:e2e`: 2 pruebas aprobadas, proyectos `chromium` y `mobile`.
 - Servidor Vite local: responde en `http://127.0.0.1:5176`.
 - Rama local de correcciones: `fix/hu001-review-corrections`.

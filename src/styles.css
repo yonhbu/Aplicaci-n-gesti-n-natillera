@@ -224,6 +224,7 @@ th {
 
 .notice,
 .error,
+.warning,
 .status {
   margin: 16px auto 0;
   max-width: 1180px;
@@ -236,6 +237,10 @@ th {
 
 .error {
   color: #991b1b;
+}
+
+.warning {
+  color: #92400e;
 }
 
 .muted {

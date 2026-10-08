@@ -9,8 +9,10 @@ import { fetchWorkspaceContext } from '../data/workspace';
 import { monthKey } from '../domain/date';
 import { prevalidateLegacySources, type LegacyPrevalidationReport } from '../domain/legacyPrevalidation';
 import { formatCop, parseCop, toDatabaseMoney } from '../domain/money';
-import { validateContributionDraft } from '../domain/savings';
+import { buildPendingContributionOperation, type PendingContributionOperation } from '../domain/pendingContribution';
+import type { ContributionMethod } from '../domain/savings';
 import { previewWithdrawal } from '../domain/withdrawal';
+import { clearPendingContribution, readPendingContribution, writePendingContribution } from '../lib/pendingContributionStorage';
 import { supabase } from '../lib/supabase';
 import type { Cycle, CycleMember, SavingsContribution, Workspace } from '../lib/types';
 import { userSafeError } from '../lib/userMessages';
@@ -62,6 +64,17 @@ export function App() {
     setCycleMembers(membersData);
     setContributions(contributionData);
     setViewState('ready');
+  }
+
+  async function handleContributionSaved() {
+    try {
+      await refreshAll();
+      clearPendingContribution();
+      setMessage('Aporte confirmado por la base.');
+    } catch (error) {
+      setMessage(`Aporte guardado, pero no se pudo refrescar la pantalla: ${userSafeError(error)}`);
+      throw error;
+    }
   }
 
   useEffect(() => {
@@ -152,10 +165,7 @@ export function App() {
           <ContributionForm
             cycle={cycle}
             cycleMembers={cycleMembers}
-            onSaved={async () => {
-              await refreshAll();
-              setMessage('Aporte confirmado por la base.');
-            }}
+            onSaved={handleContributionSaved}
             onError={(error) => setMessage(userSafeError(error))}
           />
         </div>
@@ -411,40 +421,64 @@ function ContributionForm({
   const [amountText, setAmountText] = useState('100.000');
   const [effectiveDate, setEffectiveDate] = useState('2026-09-23');
   const [appliedMonth, setAppliedMonth] = useState(10);
-  const [method, setMethod] = useState('bank_transfer');
-  const [idempotencyKey, setIdempotencyKey] = useState(makeIdempotencyKey);
+  const [method, setMethod] = useState<ContributionMethod>('bank_transfer');
+  const [pendingOperation, setPendingOperation] = useState<PendingContributionOperation | null>(null);
   const [pending, setPending] = useState(false);
-  const draftSignature = `${cycleMemberId}|${amountText}|${effectiveDate}|${cycle.year}|${appliedMonth}|${method}`;
 
   useEffect(() => {
-    setIdempotencyKey(makeIdempotencyKey());
-  }, [draftSignature]);
+    const stored = readPendingContribution();
+    if (!stored || stored.draft.appliedYear !== cycle.year) {
+      return;
+    }
+    setPendingOperation(stored);
+    setCycleMemberId(stored.draft.memberId);
+    setAmountText(stored.draft.amount);
+    setEffectiveDate(stored.draft.effectiveDate);
+    setAppliedMonth(stored.draft.appliedMonth);
+    setMethod(stored.draft.method);
+  }, [cycle.year]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setPending(true);
+    let operationForRetry: PendingContributionOperation | null = null;
+    let savedByServer = false;
     try {
-      const valid = validateContributionDraft({
+      const operation = buildPendingContributionOperation({
+        existing: pendingOperation,
+        now: new Date(),
+        makeKey: makeIdempotencyKey,
+        draft: {
         memberId: cycleMemberId,
         amountText,
         effectiveDate,
         appliedYear: cycle.year,
         appliedMonth,
-        method: method as never,
-        idempotencyKey
-      });
-      await registerContribution({
-        cycleMemberId,
-        amount: toDatabaseMoney(valid.amount),
-        effectiveDate: valid.effectiveDate,
-        appliedYear: valid.appliedYear,
-        appliedMonth: valid.appliedMonth,
         method,
-        idempotencyKey: valid.idempotencyKey
+        idempotencyKey: pendingOperation?.idempotencyKey ?? 'pending-client-key'
+        }
       });
+      operationForRetry = operation;
+      setPendingOperation(operation);
+      writePendingContribution(operation);
+      await registerContribution({
+        cycleMemberId: operation.draft.memberId,
+        amount: operation.draft.amount,
+        effectiveDate: operation.draft.effectiveDate,
+        appliedYear: operation.draft.appliedYear,
+        appliedMonth: operation.draft.appliedMonth,
+        method,
+        idempotencyKey: operation.idempotencyKey
+      });
+      savedByServer = true;
       await onSaved();
-      setIdempotencyKey(makeIdempotencyKey());
+      setPendingOperation(null);
     } catch (error) {
+      if (operationForRetry && !savedByServer) {
+        const unknownOperation = { ...operationForRetry, status: 'unknown' as const, updatedAt: new Date().toISOString() };
+        setPendingOperation(unknownOperation);
+        writePendingContribution(unknownOperation);
+      }
       onError(error);
     } finally {
       setPending(false);
@@ -454,6 +488,11 @@ function ContributionForm({
   return (
     <section className="panel">
       <h2>Aportes de ahorro</h2>
+      {pendingOperation ? (
+        <p className="warning">
+          Hay un aporte pendiente de confirmacion local. Reintenta sin cambiar los datos para resolver la misma operacion.
+        </p>
+      ) : null}
       <form onSubmit={submit} className="form-grid">
         <label>
           Socio
@@ -473,7 +512,7 @@ function ContributionForm({
         <MonthSelect label="Mes aplicado" value={appliedMonth} onChange={setAppliedMonth} disabled={pending} />
         <label>
           Metodo
-          <select value={method} onChange={(event) => setMethod(event.target.value)} disabled={pending}>
+          <select value={method} onChange={(event) => setMethod(event.target.value as ContributionMethod)} disabled={pending}>
             <option value="bank_transfer">Transferencia</option>
             <option value="bank_deposit">Consignacion banco</option>
             <option value="cash">Efectivo</option>

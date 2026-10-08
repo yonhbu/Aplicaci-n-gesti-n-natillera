@@ -25,13 +25,13 @@ const result =
   process.platform === 'win32'
     ? spawnSync(`"${supabaseBin}" ${commands[mode].join(' ')}`, {
         cwd: repoRoot,
-        stdio: 'inherit',
+        encoding: 'utf8',
         shell: true,
         env: { ...process.env, SUPABASE_TELEMETRY_DISABLED: '1' }
       })
     : spawnSync(supabaseBin, commands[mode], {
         cwd: repoRoot,
-        stdio: 'inherit',
+        encoding: 'utf8',
         env: { ...process.env, SUPABASE_TELEMETRY_DISABLED: '1' }
       });
 
@@ -39,4 +39,24 @@ if (result.error) {
   console.error(result.error.message);
 }
 
+if (result.stdout) {
+  process.stdout.write(redactSupabaseOutput(result.stdout));
+}
+
+if (result.stderr) {
+  process.stderr.write(redactSupabaseOutput(result.stderr));
+}
+
 process.exit(result.status ?? 1);
+
+function redactSupabaseOutput(output) {
+  const elevatedRoleKey = ['SERVICE', 'ROLE'].join('_');
+  const keyNamePattern = new RegExp(
+    `"((?:PUBLISHABLE|SECRET|JWT_SECRET|ANON|${elevatedRoleKey}|S3_PROTOCOL_ACCESS_KEY_ID|S3_PROTOCOL_ACCESS_KEY_SECRET)_?KEY|SECRET_KEY|JWT_SECRET)"\\s*:\\s*"[^"]+"`,
+    'g',
+  );
+  return output
+    .replace(keyNamePattern, '"$1":"[redacted]"')
+    .replace(/(sb_(?:publishable|secret)_[A-Za-z0-9_-]+)/g, '[redacted]')
+    .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[redacted-jwt]');
+}

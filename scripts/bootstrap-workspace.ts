@@ -28,8 +28,12 @@ const admin = createClient(supabaseUrl, supabaseSecretKey, {
   }
 });
 
-if (process.env.SUPABASE_ENV === 'test' && /4412[12]/.test(supabaseUrl)) {
-  throw new Error('Bootstrap TEST se nego a usar puertos DEV.');
+if (process.env.SUPABASE_ENV === 'test' && supabaseUrl !== 'http://127.0.0.1:55421') {
+  throw new Error(`Bootstrap TEST se nego a usar URL distinta de TEST local 55421: ${supabaseUrl}.`);
+}
+
+if (process.env.SUPABASE_ENV !== 'test' && supabaseUrl !== 'http://127.0.0.1:44121') {
+  throw new Error(`Bootstrap DEV se nego a usar URL distinta de DEV local 44121: ${supabaseUrl}.`);
 }
 
 async function ensureAuthUser(email: string) {

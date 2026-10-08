@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap;
-select plan(24);
+select plan(30);
 
 insert into auth.users (id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
 values
@@ -180,6 +180,51 @@ select throws_ok(
   'rechaza NaN'
 );
 
+select throws_ok(
+  $$ select public.register_savings_contribution('40000000-0000-0000-0000-000000000002', 'idem-infinity-date', 100000, 'infinity'::date, 2026, 3, 'bank_transfer', 'manual') $$,
+  null,
+  'La fecha efectiva debe ser una fecha finita.',
+  'rechaza fecha efectiva infinita'
+);
+
+select ok(
+  has_function_privilege('authenticated', 'public.current_user_is_workspace_admin(uuid)', 'EXECUTE'),
+  'authenticated tiene EXECUTE explicito para helper usado por RLS'
+);
+
+select lives_ok(
+  $$ select public.register_savings_contribution('40000000-0000-0000-0000-000000000002', 'idem-same-key-diff', 100000, '2026-03-05', 2026, 3, 'bank_transfer', 'manual') $$,
+  'prepara primera llamada de clave para contenido distinto'
+);
+
+select throws_ok(
+  $$ select public.register_savings_contribution('40000000-0000-0000-0000-000000000002', 'idem-same-key-diff', 100001, '2026-03-05', 2026, 3, 'bank_transfer', 'manual') $$,
+  null,
+  'La clave de idempotencia ya existe con otro contenido.',
+  'misma clave con contenido distinto se rechaza'
+);
+
+reset role;
+insert into public.members (id, workspace_id, display_name, legacy_id)
+values ('30000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000002', 'Nombre antes rollback', 'rollback-member');
+set local role authenticated;
+set local request.jwt.claim.sub = '00000000-0000-0000-0000-000000000003';
+
+select throws_ok(
+  $$ select public.save_cycle_member('10000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', '30000000-0000-0000-0000-000000000003', '99999999-0000-0000-0000-000000000999', 'Nombre no debe quedar', 'rollback-member', 100000, 1, 12, false, true) $$,
+  null,
+  'Participacion del ciclo no encontrada para actualizar.',
+  'RPC de socios revierte cambios parciales si falla participacion'
+);
+
+reset role;
+select is(
+  (select display_name from public.members where id = '30000000-0000-0000-0000-000000000003'),
+  'Nombre antes rollback',
+  'rollback conserva nombre original del socio'
+);
+
+set local role authenticated;
 set local request.jwt.claim.sub = '00000000-0000-0000-0000-000000000002';
 select is((select count(*) from public.workspaces), 0::bigint, 'usuario sin membresia no lee workspaces');
 
