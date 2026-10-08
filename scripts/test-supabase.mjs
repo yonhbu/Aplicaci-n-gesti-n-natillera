@@ -57,6 +57,7 @@ function redactSupabaseOutput(output) {
   );
   return output
     .replace(keyNamePattern, '"$1":"[redacted]"')
+    .replace(/"(S3_PROTOCOL_ACCESS_KEY_ID|S3_PROTOCOL_ACCESS_KEY_SECRET)"\s*:\s*"[^"]+"/g, '"$1":"[redacted]"')
     .replace(/(sb_(?:publishable|secret)_[A-Za-z0-9_-]+)/g, '[redacted]')
     .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[redacted-jwt]');
 }

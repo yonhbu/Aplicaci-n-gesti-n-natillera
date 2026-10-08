@@ -8,6 +8,8 @@ Decision: no se implementan prestamos, pollas, liquidaciones reales, banco ni co
 
 Motivo: esos modulos requieren reglas y operaciones atomicas propias; simularlos ahora crearia informacion financiera falsa.
 
+Vigencia: reemplazada parcialmente por la orden de Bloque B del 2026-10-07 para implementar solo NAT-HU-002 y NAT-HU-003. Liquidaciones reales, banco, comprobantes privados e importacion completa siguen bloqueados.
+
 ## 2026-10-06 - Aportes por RPC
 
 Decision: `savings_contributions` no acepta insert/update/delete directos desde el cliente; se usa `register_savings_contribution`.
@@ -33,3 +35,13 @@ Motivo: aceptar HU-001 con esos defectos crearia riesgo financiero real antes de
 Decision: persistir localmente la operacion de aporte pendiente con clave idempotente y payload canonico hasta resolverla, y reforzar SQL con fechas finitas y grants explicitos.
 
 Motivo: una respuesta perdida o recarga no debe convertir un reintento ambiguo en otro aporte; las politicas RLS no deben depender de privilegios heredados; y el servidor debe rechazar fechas no finitas aunque el frontend valide.
+
+## 2026-10-07 - Bloque B con ledger minimo balanceado
+
+Hecho: NAT-HU-002 y NAT-HU-003 requieren operaciones monetarias atomicas para prestamos, cobros, pollas y premios.
+
+Decision: usar `financial_operations` como cabecera idempotente y `ledger_entries` como partidas balanceadas por operacion, sin plan contable configurable ni motor ERP. Las tablas de prestamos y polla son tablas de dominio; el ledger es la fuente comun de saldos publicados.
+
+Motivo: una sola lista de caja no representa cartera, obligaciones, fondos y premios pendientes. El par operacion/partidas permite demostrar balance, idempotencia y trazabilidad sin sobredisenar el sistema.
+
+Limite: los reversos completos, banco real, conciliacion, liquidacion y reparto final quedan para HUs posteriores.

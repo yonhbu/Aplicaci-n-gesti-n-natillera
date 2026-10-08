@@ -18,7 +18,32 @@ La previsualizacion pura usa:
 
 `ahorro aportado + rendimiento reconocido 12% EA ACT/365F + premios netos pendientes - deudas - cuota anual - penalidad - otros descuentos`.
 
-HU-001 no confirma liquidaciones, no ejecuta transferencias y no reparte utilidad de prestamos.
+HU-001 no confirma liquidaciones, no ejecuta transferencias y no reparte utilidad de prestamos. Bloque B reconoce utilidad de prestamos en fondo separado; su reparto final sigue pendiente de reglas de liquidacion.
+
+## Registro financiero
+
+- Los saldos visibles de caja, cartera, administracion, utilidad de prestamos, bolsa de polla y premios por pagar se reconstruyen desde operaciones publicadas.
+- Toda operacion financiera multi-registro debe quedar balanceada en servidor: la suma de partidas de una operacion es cero.
+- La idempotencia pertenece a la operacion completa; repetir la misma clave devuelve la misma operacion y no duplica caja.
+- Desembolsos, cobros, aportes de polla, premios y pagos de premios se confirman por RPC transaccional.
+- Cronogramas, cotizaciones y previsualizaciones no son movimientos de caja.
+- Correcciones monetarias futuras deben hacerse por reverso trazable, no borrando historia. La pantalla de reversos no pertenece a B.
+
+## Prestamos
+
+- Un contrato puede estar asociado a un socio o a un deudor externo identificado.
+- Metodos soportados en B: amortizado, interes fijo y solo interes. Las tasas son por contrato y pueden ser cero.
+- El desembolso crea cartera y salida de caja; no se puede confirmar dos veces el mismo prestamo por reintento.
+- Un cobro exige fecha real, monto total, aplicacion a capital e interes, y clave de idempotencia.
+- La comision de administracion sobre intereses cobrados es 10%; el 90% restante queda en fondo de utilidad de prestamos para reglas posteriores.
+- La cotizacion pura del acuerdo P013 no se generaliza a todos los prestamos: principal pendiente mas primer mes acordado solo si ese interes no fue cobrado antes.
+
+## Pollas y premios
+
+- Los aportes de polla entran a bolsa de polla y no remuneran como ahorro.
+- El premio se reconoce en dos pasos: premio bruto con comision fija y neto pendiente; luego pago efectivo separado.
+- La comision fija vigente en B es $5.000 por premio. Un premio bruto menor que la comision se rechaza hasta tener regla confirmada.
+- Los derechos historicos deben conservarse por participacion; no se deben cancelar por cambios posteriores del socio.
 
 ## Legacy
 

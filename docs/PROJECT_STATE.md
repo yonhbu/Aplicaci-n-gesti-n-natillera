@@ -25,17 +25,36 @@ Pendiente de revision:
 - Confirmar datos reales antes de cualquier migracion completa.
 - Revisar los comprobantes originales: no se recibio una fuente de bytes de imagen separada.
 
+## NAT-HU-002 y NAT-HU-003
+
+Estado: `READY_FOR_REVIEW`
+
+Implementado:
+
+- Migracion incremental de Bloque B con `financial_operations` y `ledger_entries`.
+- RPC transaccionales e idempotentes para crear contrato de prestamo, confirmar desembolso, registrar cobro, registrar aporte de polla, asignar premio y pagar premio neto.
+- Tablas de dominio para contratos, cronogramas, pagos, actividades de polla, aportes, premios y pagos de premios.
+- RLS por workspace para lectura y gestion permitida; escrituras monetarias directas quedan cerradas al cliente.
+- UI operativa para prestamos/cobros, resumen financiero reconstruido desde ledger, pollas y premios.
+- Reglas puras probadas para interes EA ACT/365F, 10/90 de interes cobrado, distribucion igualitaria base, cotizacion P013 y premio neto de polla.
+
+Limites vigentes:
+
+- Banco real, conciliacion, liquidaciones, reparto final de utilidad, reversos operativos de UI, importacion productiva y comprobantes privados siguen fuera de alcance.
+- La caja inicial de pruebas puede quedar negativa en escenarios ficticios de desembolso; no es conciliacion bancaria.
+- Los respaldos reales se conservan fuera de Git; B no declara migracion completa.
+
 ## Verificaciones ejecutadas
 
 - `npm run check:secrets`: aprobado.
 - `npm run typecheck`: aprobado.
-- `npm run test`: 6 archivos, 18 pruebas aprobadas.
+- `npm run test`: 8 archivos, 26 pruebas aprobadas.
 - `npm run build`: aprobado.
 - `npm run test:infra:reset`: aprobado sobre `.supabase-test`.
-- `npm run test:rls`: 1 archivo SQL, 30 pruebas aprobadas.
+- `npm run test:rls`: 2 archivos SQL, 47 pruebas aprobadas.
 - `npm run test:e2e`: 2 pruebas aprobadas, proyectos `chromium` y `mobile`.
 - Servidor Vite local: responde en `http://127.0.0.1:5176`.
-- Rama local de correcciones: `fix/hu001-review-corrections`.
+- Rama local de Bloque B: `feature/block-b-hu002-hu003`.
 - Manifiesto SHA-256 local de fuentes entregadas: `incoming/manifests/legacy-sources-2026-10-06.sha256.json`, ignorado por Git.
 - `npm run test:infra:stop`: aprobado; stack TEST detenido.
 

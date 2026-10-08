@@ -2,7 +2,7 @@
 
 Aplicacion privada para gestionar la base de Natillera con React, TypeScript, Vite y Supabase.
 
-Estado actual: `NAT-HU-001 READY_FOR_REVIEW`.
+Estado actual: `NAT-HU-001`, `NAT-HU-002` y `NAT-HU-003` en `READY_FOR_REVIEW`.
 
 ## Alcance HU-001
 
@@ -15,9 +15,19 @@ Estado actual: `NAT-HU-001 READY_FOR_REVIEW`.
 - Prevalidacion local de fuentes legacy elegidas por el usuario.
 - Exportacion del alcance implementado con version de formato.
 
-No incluye prestamos, pollas, liquidaciones reales, banco, comprobantes privados ni migracion completa.
+No incluye liquidaciones reales, banco, comprobantes privados ni migracion completa.
 
 La HU-001 sigue en `READY_FOR_REVIEW`; las correcciones de revision no la convierten en migracion completa ni en reemplazo operativo.
+
+## Alcance Bloque B
+
+- Registro financiero central con operaciones y partidas balanceadas.
+- Contratos de prestamo para socios o deudores externos, desembolso por RPC y cobros con aplicacion explicita a capital/interes.
+- Separacion contable entre caja, cartera, fondo de utilidad de prestamos, administracion por pagar, bolsa de polla, premios por pagar y ahorro.
+- Actividades de polla por periodo, aportes identificados, premio bruto, comision fija y pago neto separado.
+- Reglas puras verificadas para interes EA ACT/365F, reparto 10/90 de intereses, distribucion igualitaria base y premio neto de polla.
+
+El Bloque B no acepta A como `DONE`, no despliega, no importa datos reales y no habilita liquidaciones, banco real, conciliacion productiva ni comprobantes privados.
 
 ## Comandos
 
@@ -42,4 +52,4 @@ Copia `.env.example` a `.env.local` y ajusta valores locales. No uses correos re
 
 ## Seguridad
 
-El cliente no contiene claves elevadas. RLS limita lectura por workspace y los aportes se escriben por `register_savings_contribution`, con idempotencia y auditoria en la misma transaccion.
+El cliente no contiene claves elevadas. RLS limita lectura por workspace. Los aportes de ahorro, desembolsos, cobros de prestamos, aportes de polla y pagos de premios monetarios se escriben por RPC idempotentes con auditoria y partidas financieras en la misma transaccion.

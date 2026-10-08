@@ -60,3 +60,74 @@ export interface WorkspaceContext {
   workspace: Workspace | null;
   activeCycle: Cycle | null;
 }
+
+export interface FinancialOperation {
+  id: string;
+  workspace_id: string;
+  cycle_id: string;
+  idempotency_key: string;
+  operation_type: string;
+  effective_date: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface LedgerEntry {
+  id: string;
+  operation_id: string;
+  workspace_id: string;
+  cycle_id: string;
+  account: string;
+  amount: string;
+}
+
+export interface LoanContract {
+  id: string;
+  workspace_id: string;
+  cycle_id: string;
+  borrower_member_id: string | null;
+  external_borrower_name: string | null;
+  referred_by_member_id: string | null;
+  principal: string;
+  method: 'amortized' | 'fixed_interest' | 'interest_only';
+  rate_unit: 'EA' | 'MONTHLY_FIXED';
+  rate_value: string;
+  term_months: number;
+  start_date: string;
+  status: 'draft' | 'active' | 'paid' | 'cancelled';
+  disbursed_operation_id: string | null;
+  borrower?: Member | null;
+}
+
+export interface LoanPayment {
+  id: string;
+  loan_id: string;
+  payment_date: string;
+  amount: string;
+  capital_amount: string;
+  interest_amount: string;
+  kind: 'regular' | 'prepayment';
+}
+
+export interface PollaActivity {
+  id: string;
+  workspace_id: string;
+  cycle_id: string;
+  period_year: number;
+  period_month: number;
+  name: string;
+  status: 'open' | 'awarded' | 'closed';
+}
+
+export interface PollaPrize {
+  id: string;
+  workspace_id: string;
+  cycle_id: string;
+  activity_id: string;
+  winner_cycle_member_id: string;
+  gross_amount: string;
+  admin_commission: string;
+  net_amount: string;
+  status: 'pending_payment' | 'paid' | 'reversed';
+  awarded_at: string;
+}

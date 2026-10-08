@@ -3,7 +3,10 @@ import type { Session } from '@supabase/supabase-js';
 import Decimal from 'decimal.js';
 import { getCurrentSession, logout, requestOtp, verifyOtp } from '../data/auth';
 import { buildHu001Export } from '../data/export';
+import { listLedgerEntries } from '../data/finance';
+import { confirmLoanDisbursement, createLoanContract, listLoanPayments, listLoans, recordLoanPayment } from '../data/loans';
 import { createCycleMember, listCycleMembers, updateCycleMember } from '../data/members';
+import { awardPollaPrize, createPollaActivity, listPollaActivities, listPollaPrizes, payPollaPrize, registerPollaContribution } from '../data/polla';
 import { listSavingsContributions, registerContribution } from '../data/savings';
 import { fetchWorkspaceContext } from '../data/workspace';
 import { monthKey } from '../domain/date';
@@ -14,7 +17,7 @@ import type { ContributionMethod } from '../domain/savings';
 import { previewWithdrawal } from '../domain/withdrawal';
 import { clearPendingContribution, readPendingContribution, writePendingContribution } from '../lib/pendingContributionStorage';
 import { supabase } from '../lib/supabase';
-import type { Cycle, CycleMember, SavingsContribution, Workspace } from '../lib/types';
+import type { Cycle, CycleMember, LedgerEntry, LoanContract, LoanPayment, PollaActivity, PollaPrize, SavingsContribution, Workspace } from '../lib/types';
 import { userSafeError } from '../lib/userMessages';
 
 const months = [
@@ -45,6 +48,11 @@ export function App() {
   const [cycle, setCycle] = useState<Cycle | null>(null);
   const [cycleMembers, setCycleMembers] = useState<CycleMember[]>([]);
   const [contributions, setContributions] = useState<SavingsContribution[]>([]);
+  const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
+  const [loans, setLoans] = useState<LoanContract[]>([]);
+  const [loanPayments, setLoanPayments] = useState<LoanPayment[]>([]);
+  const [pollaActivities, setPollaActivities] = useState<PollaActivity[]>([]);
+  const [pollaPrizes, setPollaPrizes] = useState<PollaPrize[]>([]);
   const [message, setMessage] = useState('');
 
   async function refreshAll() {
@@ -61,8 +69,20 @@ export function App() {
       listCycleMembers(context.activeCycle.id),
       listSavingsContributions(context.activeCycle.id)
     ]);
+    const [ledgerData, loansData, loanPaymentsData, activitiesData, prizesData] = await Promise.all([
+      listLedgerEntries(context.activeCycle.id),
+      listLoans(context.activeCycle.id),
+      listLoanPayments(context.activeCycle.id),
+      listPollaActivities(context.activeCycle.id),
+      listPollaPrizes(context.activeCycle.id)
+    ]);
     setCycleMembers(membersData);
     setContributions(contributionData);
+    setLedgerEntries(ledgerData);
+    setLoans(loansData);
+    setLoanPayments(loanPaymentsData);
+    setPollaActivities(activitiesData);
+    setPollaPrizes(prizesData);
     setViewState('ready');
   }
 
@@ -151,6 +171,7 @@ export function App() {
           <ExportButton workspace={workspace} cycle={cycle} cycleMembers={cycleMembers} contributions={contributions} />
         </section>
         <SavingsSummary cycleMembers={cycleMembers} contributions={contributions} />
+        <FinanceSummary ledgerEntries={ledgerEntries} />
         <div className="columns">
           <MemberForm
             workspace={workspace}
@@ -170,6 +191,31 @@ export function App() {
           />
         </div>
         <MembersTable cycleMembers={cycleMembers} contributions={contributions} />
+        <div className="columns">
+          <LoansPanel
+            cycle={cycle}
+            cycleMembers={cycleMembers}
+            loans={loans}
+            payments={loanPayments}
+            onSaved={async () => {
+              await refreshAll();
+              setMessage('Operacion de prestamo confirmada.');
+            }}
+            onError={(error) => setMessage(userSafeError(error))}
+          />
+          <PollaPanel
+            workspace={workspace}
+            cycle={cycle}
+            cycleMembers={cycleMembers}
+            activities={pollaActivities}
+            prizes={pollaPrizes}
+            onSaved={async () => {
+              await refreshAll();
+              setMessage('Operacion de polla confirmada.');
+            }}
+            onError={(error) => setMessage(userSafeError(error))}
+          />
+        </div>
         <WithdrawalPreviewPanel />
         <LegacyPanel />
         <FutureModules />
@@ -275,6 +321,37 @@ function SavingsSummary({ cycleMembers, contributions }: { cycleMembers: CycleMe
       <div>
         <span>Pendiente descriptivo</span>
         <strong>{formatCop(totals.pending)}</strong>
+      </div>
+    </section>
+  );
+}
+
+function FinanceSummary({ ledgerEntries }: { ledgerEntries: LedgerEntry[] }) {
+  const balances = useMemo(() => {
+    const byAccount = new Map<string, Decimal>();
+    for (const entry of ledgerEntries) {
+      byAccount.set(entry.account, (byAccount.get(entry.account) ?? new Decimal(0)).plus(entry.amount));
+    }
+    return byAccount;
+  }, [ledgerEntries]);
+
+  return (
+    <section className="metrics">
+      <div>
+        <span>Caja reconstruida</span>
+        <strong>{formatCop(balances.get('cash') ?? 0)}</strong>
+      </div>
+      <div>
+        <span>Cartera</span>
+        <strong>{formatCop(balances.get('loans_receivable') ?? 0)}</strong>
+      </div>
+      <div>
+        <span>Fondo utilidad prestamos</span>
+        <strong>{formatCop(new Decimal(0).minus(balances.get('member_loan_profit_fund') ?? 0))}</strong>
+      </div>
+      <div>
+        <span>Administracion por pagar</span>
+        <strong>{formatCop(new Decimal(0).minus(balances.get('admin_payable') ?? 0))}</strong>
       </div>
     </section>
   );
@@ -568,6 +645,289 @@ function MembersTable({ cycleMembers, contributions }: { cycleMembers: CycleMemb
   );
 }
 
+function LoansPanel({
+  cycle,
+  cycleMembers,
+  loans,
+  payments,
+  onSaved,
+  onError
+}: {
+  cycle: Cycle;
+  cycleMembers: CycleMember[];
+  loans: LoanContract[];
+  payments: LoanPayment[];
+  onSaved: () => Promise<void>;
+  onError: (error: unknown) => void;
+}) {
+  const [borrowerMemberId, setBorrowerMemberId] = useState('');
+  const [externalName, setExternalName] = useState('');
+  const [principal, setPrincipal] = useState('500.000');
+  const [method, setMethod] = useState('fixed_interest');
+  const [rateUnit, setRateUnit] = useState('MONTHLY_FIXED');
+  const [rateValue, setRateValue] = useState('5');
+  const [termMonths, setTermMonths] = useState(1);
+  const [startDate, setStartDate] = useState('2026-09-06');
+  const [selectedLoanId, setSelectedLoanId] = useState('');
+  const [paymentAmount, setPaymentAmount] = useState('25.000');
+  const [capitalAmount, setCapitalAmount] = useState('0');
+  const [interestAmount, setInterestAmount] = useState('25.000');
+  const [paymentDate, setPaymentDate] = useState('2026-10-06');
+  const [pending, setPending] = useState(false);
+
+  const loanRows = loans.map((loan) => {
+    const paidCapital = payments.filter((payment) => payment.loan_id === loan.id).reduce((sum, payment) => sum.plus(payment.capital_amount), new Decimal(0));
+    const paidInterest = payments.filter((payment) => payment.loan_id === loan.id).reduce((sum, payment) => sum.plus(payment.interest_amount), new Decimal(0));
+    return { loan, pendingPrincipal: new Decimal(loan.principal).minus(paidCapital), paidInterest };
+  });
+
+  async function submitLoan(event: React.FormEvent) {
+    event.preventDefault();
+    setPending(true);
+    try {
+      const created = await createLoanContract({
+        cycleId: cycle.id,
+        borrowerMemberId: borrowerMemberId || null,
+        externalBorrowerName: borrowerMemberId ? null : externalName,
+        principal: toDatabaseMoney(parseCop(principal, 'principal')),
+        method,
+        rateUnit,
+        rateValue: parseCop(rateValue, 'tasa').div(100).toString(),
+        termMonths,
+        startDate,
+        idempotencyKey: makeIdempotencyKey()
+      });
+      await confirmLoanDisbursement(created.id, startDate, makeIdempotencyKey());
+      await onSaved();
+    } catch (error) {
+      onError(error);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function submitPayment(event: React.FormEvent) {
+    event.preventDefault();
+    setPending(true);
+    try {
+      await recordLoanPayment({
+        loanId: selectedLoanId,
+        idempotencyKey: makeIdempotencyKey(),
+        paymentDate,
+        amount: toDatabaseMoney(parseCop(paymentAmount, 'pago')),
+        capitalAmount: toDatabaseMoney(parseCop(capitalAmount, 'capital')),
+        interestAmount: toDatabaseMoney(parseCop(interestAmount, 'interes')),
+        kind: new Decimal(capitalAmount.replaceAll('.', '').replace(',', '.')).gt(0) ? 'prepayment' : 'regular'
+      });
+      await onSaved();
+    } catch (error) {
+      onError(error);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <section className="panel">
+      <h2>Prestamos y cobros</h2>
+      <form onSubmit={submitLoan} className="form-grid">
+        <label>
+          Socio deudor
+          <select value={borrowerMemberId} onChange={(event) => setBorrowerMemberId(event.target.value)} disabled={pending}>
+            <option value="">Deudor externo</option>
+            {cycleMembers.map((item) => <option key={item.id} value={item.member_id}>{item.member?.display_name}</option>)}
+          </select>
+        </label>
+        <label>
+          Deudor externo
+          <input value={externalName} onChange={(event) => setExternalName(event.target.value)} disabled={pending || Boolean(borrowerMemberId)} />
+        </label>
+        <label>
+          Principal
+          <input value={principal} onChange={(event) => setPrincipal(event.target.value)} disabled={pending} />
+        </label>
+        <label>
+          Metodo
+          <select value={method} onChange={(event) => setMethod(event.target.value)} disabled={pending}>
+            <option value="amortized">Amortizado</option>
+            <option value="fixed_interest">Interes fijo</option>
+            <option value="interest_only">Solo interes</option>
+          </select>
+        </label>
+        <label>
+          Base tasa
+          <select value={rateUnit} onChange={(event) => setRateUnit(event.target.value)} disabled={pending}>
+            <option value="MONTHLY_FIXED">Fijo mensual sobre principal</option>
+            <option value="EA">EA</option>
+          </select>
+        </label>
+        <label>
+          Tasa %
+          <input value={rateValue} onChange={(event) => setRateValue(event.target.value)} disabled={pending} />
+        </label>
+        <label>
+          Plazo meses
+          <input type="number" min="1" value={termMonths} onChange={(event) => setTermMonths(Number(event.target.value))} disabled={pending} />
+        </label>
+        <label>
+          Fecha desembolso
+          <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} disabled={pending} />
+        </label>
+        <button type="submit" disabled={pending}>{pending ? 'Confirmando...' : 'Crear y desembolsar'}</button>
+      </form>
+      <form onSubmit={submitPayment} className="form-grid compact-form">
+        <label>
+          Prestamo
+          <select value={selectedLoanId} onChange={(event) => setSelectedLoanId(event.target.value)} required disabled={pending}>
+            <option value="">Seleccionar</option>
+            {loanRows.map(({ loan, pendingPrincipal }) => <option key={loan.id} value={loan.id}>{loan.borrower?.display_name ?? loan.external_borrower_name} - {formatCop(pendingPrincipal)}</option>)}
+          </select>
+        </label>
+        <label><span>Pago</span><input value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} disabled={pending} /></label>
+        <label><span>Capital</span><input value={capitalAmount} onChange={(event) => setCapitalAmount(event.target.value)} disabled={pending} /></label>
+        <label><span>Interes</span><input value={interestAmount} onChange={(event) => setInterestAmount(event.target.value)} disabled={pending} /></label>
+        <label><span>Fecha cobro</span><input type="date" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} disabled={pending} /></label>
+        <button type="submit" disabled={pending || !selectedLoanId}>Registrar cobro</button>
+      </form>
+      <div className="mini-list">
+        {loanRows.map(({ loan, pendingPrincipal, paidInterest }) => (
+          <p key={loan.id}><strong>{loan.borrower?.display_name ?? loan.external_borrower_name}</strong>: {loan.status}, cartera {formatCop(pendingPrincipal)}, interes cobrado {formatCop(paidInterest)}</p>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PollaPanel({
+  workspace,
+  cycle,
+  cycleMembers,
+  activities,
+  prizes,
+  onSaved,
+  onError
+}: {
+  workspace: Workspace;
+  cycle: Cycle;
+  cycleMembers: CycleMember[];
+  activities: PollaActivity[];
+  prizes: PollaPrize[];
+  onSaved: () => Promise<void>;
+  onError: (error: unknown) => void;
+}) {
+  const [activityName, setActivityName] = useState('Polla prueba');
+  const [activityMonth, setActivityMonth] = useState(10);
+  const [activityId, setActivityId] = useState('');
+  const [cycleMemberId, setCycleMemberId] = useState('');
+  const [pollaAmount, setPollaAmount] = useState('10.000');
+  const [prizeGross, setPrizeGross] = useState('40.000');
+  const [pending, setPending] = useState(false);
+
+  async function submitActivity(event: React.FormEvent) {
+    event.preventDefault();
+    setPending(true);
+    try {
+      await createPollaActivity({ workspaceId: workspace.id, cycleId: cycle.id, year: cycle.year, month: activityMonth, name: activityName });
+      await onSaved();
+    } catch (error) {
+      onError(error);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function submitContribution(event: React.FormEvent) {
+    event.preventDefault();
+    setPending(true);
+    try {
+      await registerPollaContribution({
+        activityId,
+        cycleMemberId,
+        amount: toDatabaseMoney(parseCop(pollaAmount, 'aporte polla')),
+        paidDate: '2026-10-06',
+        idempotencyKey: makeIdempotencyKey()
+      });
+      await onSaved();
+    } catch (error) {
+      onError(error);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function submitPrize(event: React.FormEvent) {
+    event.preventDefault();
+    setPending(true);
+    try {
+      await awardPollaPrize({
+        activityId,
+        winnerCycleMemberId: cycleMemberId,
+        grossAmount: toDatabaseMoney(parseCop(prizeGross, 'premio bruto')),
+        awardedAt: '2026-10-06',
+        idempotencyKey: makeIdempotencyKey()
+      });
+      await onSaved();
+    } catch (error) {
+      onError(error);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function payPrize(prizeId: string) {
+    setPending(true);
+    try {
+      await payPollaPrize(prizeId, '2026-10-06', makeIdempotencyKey());
+      await onSaved();
+    } catch (error) {
+      onError(error);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <section className="panel">
+      <h2>Pollas y premios</h2>
+      <form onSubmit={submitActivity} className="form-grid">
+        <label><span>Nombre actividad</span><input value={activityName} onChange={(event) => setActivityName(event.target.value)} disabled={pending} /></label>
+        <MonthSelect label="Mes" value={activityMonth} onChange={setActivityMonth} disabled={pending} />
+        <button type="submit" disabled={pending}>Crear actividad</button>
+      </form>
+      <form onSubmit={submitContribution} className="form-grid compact-form">
+        <label>
+          Actividad
+          <select value={activityId} onChange={(event) => setActivityId(event.target.value)} disabled={pending} required>
+            <option value="">Seleccionar</option>
+            {activities.map((activity) => <option key={activity.id} value={activity.id}>{activity.name} {activity.period_year}-{activity.period_month}</option>)}
+          </select>
+        </label>
+        <label>
+          Participante / ganador
+          <select value={cycleMemberId} onChange={(event) => setCycleMemberId(event.target.value)} disabled={pending} required>
+            <option value="">Seleccionar</option>
+            {cycleMembers.map((item) => <option key={item.id} value={item.id}>{item.member?.display_name}</option>)}
+          </select>
+        </label>
+        <label><span>Aporte polla</span><input value={pollaAmount} onChange={(event) => setPollaAmount(event.target.value)} disabled={pending} /></label>
+        <button type="submit" disabled={pending || !activityId || !cycleMemberId}>Registrar aporte</button>
+      </form>
+      <form onSubmit={submitPrize} className="form-grid compact-form">
+        <label><span>Premio bruto</span><input value={prizeGross} onChange={(event) => setPrizeGross(event.target.value)} disabled={pending} /></label>
+        <button type="submit" disabled={pending || !activityId || !cycleMemberId}>Asignar premio</button>
+      </form>
+      <div className="mini-list">
+        {prizes.map((prize) => (
+          <p key={prize.id}>
+            Premio {formatCop(prize.gross_amount)} / neto {formatCop(prize.net_amount)} / {prize.status}
+            {prize.status === 'pending_payment' ? <button type="button" onClick={() => void payPrize(prize.id)} disabled={pending}>Pagar neto</button> : null}
+          </p>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function WithdrawalPreviewPanel() {
   const preview = previewWithdrawal({
     contributions: [
@@ -681,7 +1041,7 @@ function FutureModules() {
   return (
     <section className="panel wide muted">
       <h2>Modulos posteriores</h2>
-      <p>Prestamos, pollas, liquidaciones, comprobantes privados, banco real y conciliacion quedan bloqueados para HUs posteriores. Esta version no simula saldos ni pagos inexistentes.</p>
+      <p>Liquidaciones, comprobantes privados, banco real, conciliacion, reparto final e importacion productiva quedan bloqueados para HUs posteriores. Esta version no simula saldos ni pagos inexistentes.</p>
     </section>
   );
 }
