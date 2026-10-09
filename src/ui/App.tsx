@@ -2,6 +2,30 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import Decimal from 'decimal.js';
 import { getCurrentSession, logout, requestOtp, verifyOtp } from '../data/auth';
+import {
+  confirmLoanProfitDistribution,
+  confirmMemberSettlement,
+  createBankAccount,
+  createBankReconciliation,
+  listBankAccounts,
+  listBankReconciliations,
+  listLoanProfitDistributionPayments,
+  listLoanProfitDistributions,
+  listMemberSettlementPayments,
+  listMemberSettlements,
+  payLoanProfitDistribution,
+  payMemberSettlement,
+  previewLoanProfitDistribution,
+  previewMemberSettlement,
+  recordBankFee,
+  recordBankInterest,
+  recordBankOpening,
+  recordLiquidityTransfer,
+  setLoanSettlementAgreement,
+  type LiquidityLocation,
+  type ProfitDistributionPreview,
+  type SettlementPreview
+} from '../data/blockC';
 import { buildNatilleraExport } from '../data/export';
 import { listFinancialOperations, listLedgerEntries } from '../data/finance';
 import { confirmLoanDisbursement, confirmLoanPrepayment, createLoanContract, listLoanPayments, listLoanSchedules, listLoans, quoteLoanPrepayment, recordLoanPayment, type LoanPrepaymentQuote } from '../data/loans';
@@ -17,7 +41,7 @@ import type { ContributionMethod } from '../domain/savings';
 import { previewWithdrawal } from '../domain/withdrawal';
 import { clearPendingContribution, readPendingContribution, writePendingContribution } from '../lib/pendingContributionStorage';
 import { supabase } from '../lib/supabase';
-import type { Cycle, CycleMember, FinancialOperation, LedgerEntry, LoanContract, LoanPayment, LoanSchedule, PollaActivity, PollaContribution, PollaPrize, SavingsContribution, Workspace } from '../lib/types';
+import type { BankAccount, BankReconciliation, Cycle, CycleMember, FinancialOperation, LedgerEntry, LoanContract, LoanPayment, LoanProfitDistribution, LoanProfitDistributionPayment, LoanSchedule, MemberSettlement, MemberSettlementPayment, PollaActivity, PollaContribution, PollaPrize, SavingsContribution, Workspace } from '../lib/types';
 import { userSafeError } from '../lib/userMessages';
 
 const months = [
@@ -56,6 +80,12 @@ export function App() {
   const [pollaActivities, setPollaActivities] = useState<PollaActivity[]>([]);
   const [pollaContributions, setPollaContributions] = useState<PollaContribution[]>([]);
   const [pollaPrizes, setPollaPrizes] = useState<PollaPrize[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [bankReconciliations, setBankReconciliations] = useState<BankReconciliation[]>([]);
+  const [memberSettlements, setMemberSettlements] = useState<MemberSettlement[]>([]);
+  const [memberSettlementPayments, setMemberSettlementPayments] = useState<MemberSettlementPayment[]>([]);
+  const [loanProfitDistributions, setLoanProfitDistributions] = useState<LoanProfitDistribution[]>([]);
+  const [loanProfitDistributionPayments, setLoanProfitDistributionPayments] = useState<LoanProfitDistributionPayment[]>([]);
   const [message, setMessage] = useState('');
 
   async function refreshAll() {
@@ -65,6 +95,12 @@ export function App() {
     if (!context.workspace || !context.activeCycle) {
       setCycleMembers([]);
       setContributions([]);
+      setBankAccounts([]);
+      setBankReconciliations([]);
+      setMemberSettlements([]);
+      setMemberSettlementPayments([]);
+      setLoanProfitDistributions([]);
+      setLoanProfitDistributionPayments([]);
       setViewState('no-access');
       return;
     }
@@ -72,7 +108,7 @@ export function App() {
       listCycleMembers(context.activeCycle.id),
       listSavingsContributions(context.activeCycle.id)
     ]);
-    const [operationData, ledgerData, loansData, loanPaymentsData, loanScheduleData, activitiesData, pollaContributionData, prizesData] = await Promise.all([
+    const [operationData, ledgerData, loansData, loanPaymentsData, loanScheduleData, activitiesData, pollaContributionData, prizesData, bankAccountData, reconciliationData, settlementData, settlementPaymentData, distributionData, distributionPaymentData] = await Promise.all([
       listFinancialOperations(context.activeCycle.id),
       listLedgerEntries(context.activeCycle.id),
       listLoans(context.activeCycle.id),
@@ -80,7 +116,13 @@ export function App() {
       listLoanSchedules(context.activeCycle.id),
       listPollaActivities(context.activeCycle.id),
       listPollaContributions(context.activeCycle.id),
-      listPollaPrizes(context.activeCycle.id)
+      listPollaPrizes(context.activeCycle.id),
+      listBankAccounts(context.workspace.id),
+      listBankReconciliations(context.activeCycle.id),
+      listMemberSettlements(context.activeCycle.id),
+      listMemberSettlementPayments(context.activeCycle.id),
+      listLoanProfitDistributions(context.activeCycle.id),
+      listLoanProfitDistributionPayments(context.activeCycle.id)
     ]);
     setOperations(operationData);
     setCycleMembers(membersData);
@@ -92,6 +134,12 @@ export function App() {
     setPollaActivities(activitiesData);
     setPollaContributions(pollaContributionData);
     setPollaPrizes(prizesData);
+    setBankAccounts(bankAccountData);
+    setBankReconciliations(reconciliationData);
+    setMemberSettlements(settlementData);
+    setMemberSettlementPayments(settlementPaymentData);
+    setLoanProfitDistributions(distributionData);
+    setLoanProfitDistributionPayments(distributionPaymentData);
     setViewState('ready');
   }
 
@@ -190,10 +238,28 @@ export function App() {
             pollaActivities={pollaActivities}
             pollaContributions={pollaContributions}
             pollaPrizes={pollaPrizes}
+            bankAccounts={bankAccounts}
+            bankReconciliations={bankReconciliations}
+            memberSettlements={memberSettlements}
+            memberSettlementPayments={memberSettlementPayments}
+            loanProfitDistributions={loanProfitDistributions}
+            loanProfitDistributionPayments={loanProfitDistributionPayments}
           />
         </section>
         <SavingsSummary cycleMembers={cycleMembers} contributions={contributions} />
         <FinanceSummary operations={operations} ledgerEntries={ledgerEntries} />
+        <BankPanel
+          cycle={cycle}
+          bankAccounts={bankAccounts}
+          reconciliations={bankReconciliations}
+          ledgerEntries={ledgerEntries}
+          operations={operations}
+          onSaved={async () => {
+            await refreshAll();
+            setMessage('Operacion bancaria confirmada.');
+          }}
+          onError={(error) => setMessage(userSafeError(error))}
+        />
         <div className="columns">
           <MemberForm
             workspace={workspace}
@@ -235,6 +301,29 @@ export function App() {
             onSaved={async () => {
               await refreshAll();
               setMessage('Operacion de polla confirmada.');
+            }}
+            onError={(error) => setMessage(userSafeError(error))}
+          />
+        </div>
+        <div className="columns">
+          <SettlementPanel
+            cycleMembers={cycleMembers}
+            bankAccounts={bankAccounts}
+            settlements={memberSettlements}
+            onSaved={async () => {
+              await refreshAll();
+              setMessage('Liquidacion actualizada.');
+            }}
+            onError={(error) => setMessage(userSafeError(error))}
+          />
+          <ProfitDistributionPanel
+            cycle={cycle}
+            bankAccounts={bankAccounts}
+            distributions={loanProfitDistributions}
+            payments={loanProfitDistributionPayments}
+            onSaved={async () => {
+              await refreshAll();
+              setMessage('Utilidad actualizada.');
             }}
             onError={(error) => setMessage(userSafeError(error))}
           />
@@ -838,6 +927,21 @@ function LoansPanel({
     }
   }
 
+  async function markSelectedLoanP013() {
+    if (!selectedLoanId) {
+      return;
+    }
+    setPending(true);
+    try {
+      await setLoanSettlementAgreement(selectedLoanId, 'P013_FIRST_MONTH');
+      await onSaved();
+    } catch (error) {
+      onError(error);
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
     <section className="panel">
       <h2>Prestamos y cobros</h2>
@@ -908,6 +1012,7 @@ function LoansPanel({
         <button type="submit" disabled={pending || !selectedLoanId}>Registrar cobro</button>
         <button type="button" disabled={pending || !selectedLoanId} onClick={() => void quotePrepayment()}>Cotizar prepago</button>
         <button type="button" disabled={pending || !selectedLoanId || !prepaymentQuote} onClick={() => void submitQuotedPrepayment()}>Confirmar prepago cotizado</button>
+        <button type="button" disabled={pending || !selectedLoanId} onClick={() => void markSelectedLoanP013()}>Marcar acuerdo P013</button>
       </form>
       {prepaymentQuote ? (
         <p className="status">Cotizacion: capital {formatCop(prepaymentQuote.principal_due)}, interes {formatCop(prepaymentQuote.interest_due)}, total {formatCop(prepaymentQuote.total_due)}</p>
@@ -1073,6 +1178,339 @@ function PollaPanel({
   );
 }
 
+function BankPanel({
+  cycle,
+  bankAccounts,
+  reconciliations,
+  ledgerEntries,
+  operations,
+  onSaved,
+  onError
+}: {
+  cycle: Cycle;
+  bankAccounts: BankAccount[];
+  reconciliations: BankReconciliation[];
+  ledgerEntries: LedgerEntry[];
+  operations: FinancialOperation[];
+  onSaved: () => Promise<void>;
+  onError: (error: unknown) => void;
+}) {
+  const [displayName, setDisplayName] = useState('Banco ficticio');
+  const [institutionName, setInstitutionName] = useState('');
+  const [maskedIdentifier, setMaskedIdentifier] = useState('****1234');
+  const [bankAccountId, setBankAccountId] = useState('');
+  const [effectiveDate, setEffectiveDate] = useState('2026-10-06');
+  const [amount, setAmount] = useState('1.000.000');
+  const [reference, setReference] = useState('referencia ficticia');
+  const [interestGross, setInterestGross] = useState('10.000');
+  const [feeAmount, setFeeAmount] = useState('1.000');
+  const [externalBalance, setExternalBalance] = useState('908.500');
+  const [pending, setPending] = useState(false);
+
+  const balances = useMemo(() => {
+    const operationsById = new Map(operations.map((operation) => [operation.id, operation]));
+    const byBank = new Map<string, Decimal>();
+    let physicalCash = new Decimal(0);
+    let unknownCash = new Decimal(0);
+    for (const entry of ledgerEntries) {
+      if (entry.account !== 'cash') continue;
+      const operation = operationsById.get(entry.operation_id);
+      if (operation && operation.effective_date > effectiveDate) continue;
+      if (entry.liquidity_location === 'bank' && entry.bank_account_id) {
+        byBank.set(entry.bank_account_id, (byBank.get(entry.bank_account_id) ?? new Decimal(0)).plus(entry.amount));
+      } else if (entry.liquidity_location === 'cash') {
+        physicalCash = physicalCash.plus(entry.amount);
+      } else {
+        unknownCash = unknownCash.plus(entry.amount);
+      }
+    }
+    return { byBank, physicalCash, unknownCash };
+  }, [effectiveDate, ledgerEntries, operations]);
+
+  async function run(action: () => Promise<unknown>) {
+    setPending(true);
+    try {
+      await action();
+      await onSaved();
+    } catch (error) {
+      onError(error);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  const selectedBank = bankAccountId || bankAccounts[0]?.id || '';
+
+  return (
+    <section className="panel wide">
+      <h2>Banco y conciliacion</h2>
+      <div className="form-grid">
+        <label><span>Cuenta</span><input value={displayName} onChange={(event) => setDisplayName(event.target.value)} disabled={pending} /></label>
+        <label><span>Entidad</span><input value={institutionName} onChange={(event) => setInstitutionName(event.target.value)} disabled={pending} /></label>
+        <label><span>Identificador</span><input value={maskedIdentifier} onChange={(event) => setMaskedIdentifier(event.target.value)} disabled={pending} /></label>
+        <button type="button" disabled={pending} onClick={() => void run(() => createBankAccount({ cycleId: cycle.id, displayName, institutionName, maskedIdentifier }))}>Crear cuenta</button>
+        <label>
+          Cuenta operativa
+          <select value={selectedBank} onChange={(event) => setBankAccountId(event.target.value)} disabled={pending}>
+            <option value="">Seleccionar</option>
+            {bankAccounts.map((account) => <option key={account.id} value={account.id}>{account.display_name}</option>)}
+          </select>
+        </label>
+        <label><span>Fecha</span><input type="date" value={effectiveDate} onChange={(event) => setEffectiveDate(event.target.value)} disabled={pending} /></label>
+        <label><span>Monto</span><input value={amount} onChange={(event) => setAmount(event.target.value)} disabled={pending} /></label>
+        <label><span>Referencia</span><input value={reference} onChange={(event) => setReference(event.target.value)} disabled={pending} /></label>
+        <button type="button" disabled={pending || !selectedBank} onClick={() => void run(() => recordBankOpening({ cycleId: cycle.id, bankAccountId: selectedBank, idempotencyKey: makeIdempotencyKey(), effectiveDate, amount: toDatabaseMoney(parseCop(amount, 'apertura')), reference }))}>Registrar apertura</button>
+        <label><span>Interes bruto</span><input value={interestGross} onChange={(event) => setInterestGross(event.target.value)} disabled={pending} /></label>
+        <button type="button" disabled={pending || !selectedBank} onClick={() => void run(() => recordBankInterest({ cycleId: cycle.id, bankAccountId: selectedBank, idempotencyKey: makeIdempotencyKey(), effectiveDate, grossAmount: toDatabaseMoney(parseCop(interestGross, 'interes')), withholdingAmount: '0.00', feeAmount: '0.00', reference }))}>Registrar interes</button>
+        <label><span>Comision</span><input value={feeAmount} onChange={(event) => setFeeAmount(event.target.value)} disabled={pending} /></label>
+        <button type="button" disabled={pending || !selectedBank} onClick={() => void run(() => recordBankFee({ cycleId: cycle.id, bankAccountId: selectedBank, idempotencyKey: makeIdempotencyKey(), effectiveDate, amount: toDatabaseMoney(parseCop(feeAmount, 'comision')), reference }))}>Registrar comision</button>
+        <button type="button" disabled={pending || !selectedBank} onClick={() => void run(() => recordLiquidityTransfer({ cycleId: cycle.id, idempotencyKey: makeIdempotencyKey(), effectiveDate, fromLocation: 'bank', fromBankAccountId: selectedBank, toLocation: 'cash', toBankAccountId: null, amount: toDatabaseMoney(parseCop(amount, 'traslado')), reference }))}>Trasladar a efectivo</button>
+        <label><span>Saldo externo</span><input value={externalBalance} onChange={(event) => setExternalBalance(event.target.value)} disabled={pending} /></label>
+        <button type="button" disabled={pending || !selectedBank} onClick={() => void run(() => createBankReconciliation({ cycleId: cycle.id, bankAccountId: selectedBank, openingVerifiedBalance: '0.00', openingDate: cycle.starts_on, externalBalance: toDatabaseMoney(parseCop(externalBalance, 'saldo externo')), asOfDate: effectiveDate, reference }))}>Conciliar corte</button>
+      </div>
+      <div className="mini-list">
+        {bankAccounts.map((account) => (
+          <p key={account.id}>{account.display_name}: {formatCop(balances.byBank.get(account.id) ?? 0)} en banco</p>
+        ))}
+        <p>Efectivo: {formatCop(balances.physicalCash)} / Ubicacion pendiente: {formatCop(balances.unknownCash)}</p>
+        {reconciliations.slice(0, 3).map((item) => (
+          <p key={item.id}>Conciliacion {item.as_of_date}: libro {formatCop(item.reconstructed_balance)}, externo {formatCop(item.external_balance)}, diferencia {formatCop(item.difference_amount)}</p>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SettlementPanel({
+  cycleMembers,
+  bankAccounts,
+  settlements,
+  onSaved,
+  onError
+}: {
+  cycleMembers: CycleMember[];
+  bankAccounts: BankAccount[];
+  settlements: MemberSettlement[];
+  onSaved: () => Promise<void>;
+  onError: (error: unknown) => void;
+}) {
+  const [cycleMemberId, setCycleMemberId] = useState('');
+  const [cutDate, setCutDate] = useState('2026-10-06');
+  const [annualFee, setAnnualFee] = useState('20.000');
+  const [penalty, setPenalty] = useState('50.000');
+  const [otherDiscounts, setOtherDiscounts] = useState('0');
+  const [preview, setPreview] = useState<SettlementPreview | null>(null);
+  const [settlementId, setSettlementId] = useState('');
+  const [paidDate, setPaidDate] = useState('2026-10-08');
+  const [liquidityLocation, setLiquidityLocation] = useState<LiquidityLocation>('bank');
+  const [bankAccountId, setBankAccountId] = useState('');
+  const [reference, setReference] = useState('transferencia ficticia');
+  const [pending, setPending] = useState(false);
+
+  async function run(action: () => Promise<unknown>) {
+    setPending(true);
+    try {
+      await action();
+      await onSaved();
+    } catch (error) {
+      onError(error);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function previewSettlement() {
+    if (!cycleMemberId) return;
+    setPending(true);
+    try {
+      setPreview(await previewMemberSettlement({
+        cycleMemberId,
+        cutDate,
+        annualAdminFee: toDatabaseMoney(parseCop(annualFee, 'cuota anual')),
+        penaltyAmount: toDatabaseMoney(parseCop(penalty, 'penalidad')),
+        otherDiscounts: toDatabaseMoney(parseCop(otherDiscounts, 'otros descuentos'))
+      }));
+    } catch (error) {
+      onError(error);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <section className="panel">
+      <h2>Liquidaciones</h2>
+      <div className="form-grid">
+        <label>
+          Socio
+          <select value={cycleMemberId} onChange={(event) => setCycleMemberId(event.target.value)} disabled={pending}>
+            <option value="">Seleccionar</option>
+            {cycleMembers.map((item) => <option key={item.id} value={item.id}>{item.member?.display_name}</option>)}
+          </select>
+        </label>
+        <label><span>Corte</span><input type="date" value={cutDate} onChange={(event) => setCutDate(event.target.value)} disabled={pending} /></label>
+        <label><span>Cuota anual</span><input value={annualFee} onChange={(event) => setAnnualFee(event.target.value)} disabled={pending} /></label>
+        <label><span>Penalidad</span><input value={penalty} onChange={(event) => setPenalty(event.target.value)} disabled={pending} /></label>
+        <label><span>Otros descuentos</span><input value={otherDiscounts} onChange={(event) => setOtherDiscounts(event.target.value)} disabled={pending} /></label>
+        <button type="button" disabled={pending || !cycleMemberId} onClick={() => void previewSettlement()}>Previsualizar</button>
+        <button type="button" disabled={pending || !cycleMemberId || !preview} onClick={() => void run(() => confirmMemberSettlement({ cycleMemberId, idempotencyKey: makeIdempotencyKey(), cutDate, annualAdminFee: toDatabaseMoney(parseCop(annualFee, 'cuota anual')), penaltyAmount: toDatabaseMoney(parseCop(penalty, 'penalidad')), otherDiscounts: toDatabaseMoney(parseCop(otherDiscounts, 'otros descuentos')), previewHash: preview?.preview_hash ?? '' }))}>Confirmar</button>
+      </div>
+      {preview ? (
+        <dl className="definition-grid">
+          <dt>Ahorro</dt><dd>{formatCop(preview.capital)}</dd>
+          <dt>Rendimiento</dt><dd>{formatCop(preview.recognized_yield, 2)}</dd>
+          <dt>Premios</dt><dd>{formatCop(preview.pending_net_prizes)}</dd>
+          <dt>Deudas</dt><dd>{formatCop(preview.debts)}</dd>
+          <dt>Neto</dt><dd>{formatCop(preview.net, 2)}</dd>
+          <dt>Transferencia</dt><dd>{formatCop(preview.transfer_amount)}</dd>
+        </dl>
+      ) : null}
+      <div className="form-grid compact-form">
+        <label>
+          Liquidacion
+          <select value={settlementId} onChange={(event) => setSettlementId(event.target.value)} disabled={pending}>
+            <option value="">Seleccionar</option>
+            {settlements.map((item) => {
+              const member = cycleMembers.find((candidate) => candidate.id === item.cycle_member_id);
+              return <option key={item.id} value={item.id}>{member?.member?.display_name ?? item.id} / {item.status} / {formatCop(item.transfer_amount)}</option>;
+            })}
+          </select>
+        </label>
+        <label><span>Fecha pago</span><input type="date" value={paidDate} onChange={(event) => setPaidDate(event.target.value)} disabled={pending} /></label>
+        <label>
+          Ubicacion
+          <select value={liquidityLocation} onChange={(event) => setLiquidityLocation(event.target.value as LiquidityLocation)} disabled={pending}>
+            <option value="bank">Banco</option>
+            <option value="cash">Efectivo</option>
+          </select>
+        </label>
+        <label>
+          Cuenta pago
+          <select value={bankAccountId} onChange={(event) => setBankAccountId(event.target.value)} disabled={pending || liquidityLocation === 'cash'}>
+            <option value="">Seleccionar</option>
+            {bankAccounts.map((account) => <option key={account.id} value={account.id}>{account.display_name}</option>)}
+          </select>
+        </label>
+        <label><span>Referencia pago</span><input value={reference} onChange={(event) => setReference(event.target.value)} disabled={pending} /></label>
+        <button type="button" disabled={pending || !settlementId} onClick={() => void run(() => payMemberSettlement({ settlementId, idempotencyKey: makeIdempotencyKey(), paidDate, liquidityLocation, bankAccountId: liquidityLocation === 'bank' ? bankAccountId : null, reference }))}>Registrar pago</button>
+      </div>
+    </section>
+  );
+}
+
+function ProfitDistributionPanel({
+  cycle,
+  bankAccounts,
+  distributions,
+  payments,
+  onSaved,
+  onError
+}: {
+  cycle: Cycle;
+  bankAccounts: BankAccount[];
+  distributions: LoanProfitDistribution[];
+  payments: LoanProfitDistributionPayment[];
+  onSaved: () => Promise<void>;
+  onError: (error: unknown) => void;
+}) {
+  const [cutDate, setCutDate] = useState('2026-10-06');
+  const [policyVersion, setPolicyVersion] = useState('TEST-C');
+  const [costs, setCosts] = useState('10.000');
+  const [committedYield, setCommittedYield] = useState('20.000');
+  const [reserve, setReserve] = useState('15.000');
+  const [preview, setPreview] = useState<ProfitDistributionPreview | null>(null);
+  const [distributionId, setDistributionId] = useState('');
+  const [paidDate, setPaidDate] = useState('2026-10-08');
+  const [liquidityLocation, setLiquidityLocation] = useState<LiquidityLocation>('bank');
+  const [bankAccountId, setBankAccountId] = useState('');
+  const [reference, setReference] = useState('pago utilidad ficticio');
+  const [pending, setPending] = useState(false);
+
+  async function run(action: () => Promise<unknown>) {
+    setPending(true);
+    try {
+      await action();
+      await onSaved();
+    } catch (error) {
+      onError(error);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function runPreview() {
+    setPending(true);
+    try {
+      setPreview(await previewLoanProfitDistribution({
+        cycleId: cycle.id,
+        cutDate,
+        policyVersion,
+        costsAmount: toDatabaseMoney(parseCop(costs, 'costos')),
+        committedYieldAmount: toDatabaseMoney(parseCop(committedYield, 'rendimiento comprometido')),
+        reserveAmount: toDatabaseMoney(parseCop(reserve, 'reserva'))
+      }));
+    } catch (error) {
+      onError(error);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <section className="panel">
+      <h2>Utilidad neta</h2>
+      <div className="form-grid">
+        <label><span>Corte</span><input type="date" value={cutDate} onChange={(event) => setCutDate(event.target.value)} disabled={pending} /></label>
+        <label><span>Politica</span><input value={policyVersion} onChange={(event) => setPolicyVersion(event.target.value)} disabled={pending} /></label>
+        <label><span>Costos</span><input value={costs} onChange={(event) => setCosts(event.target.value)} disabled={pending} /></label>
+        <label><span>Rendimiento comprometido</span><input value={committedYield} onChange={(event) => setCommittedYield(event.target.value)} disabled={pending} /></label>
+        <label><span>Reserva</span><input value={reserve} onChange={(event) => setReserve(event.target.value)} disabled={pending} /></label>
+        <button type="button" disabled={pending} onClick={() => void runPreview()}>Previsualizar</button>
+        <button type="button" disabled={pending || !preview} onClick={() => void run(() => confirmLoanProfitDistribution({ cycleId: cycle.id, idempotencyKey: makeIdempotencyKey(), cutDate, policyVersion, costsAmount: toDatabaseMoney(parseCop(costs, 'costos')), committedYieldAmount: toDatabaseMoney(parseCop(committedYield, 'rendimiento comprometido')), reserveAmount: toDatabaseMoney(parseCop(reserve, 'reserva')), previewHash: preview?.preview_hash ?? '' }))}>Confirmar</button>
+      </div>
+      {preview ? (
+        <dl className="definition-grid">
+          <dt>Fondo reconocido</dt><dd>{formatCop(preview.recognized_fund)}</dd>
+          <dt>Distribuible</dt><dd>{formatCop(preview.distributable)}</dd>
+          <dt>Elegibles</dt><dd>{preview.eligible_count}</dd>
+          <dt>Por socio</dt><dd>{formatCop(preview.per_member)}</dd>
+          <dt>Liquidez</dt><dd>{formatCop(preview.liquidity_available)}</dd>
+          <dt>Deficit</dt><dd>{formatCop(preview.liquidity_deficit)}</dd>
+        </dl>
+      ) : null}
+      <div className="form-grid compact-form">
+        <label>
+          Reparto
+          <select value={distributionId} onChange={(event) => setDistributionId(event.target.value)} disabled={pending}>
+            <option value="">Seleccionar</option>
+            {distributions.map((item) => <option key={item.id} value={item.id}>{item.policy_version} / {item.status} / {formatCop(item.payment_amount)}</option>)}
+          </select>
+        </label>
+        <label><span>Fecha pago</span><input type="date" value={paidDate} onChange={(event) => setPaidDate(event.target.value)} disabled={pending} /></label>
+        <label>
+          Ubicacion
+          <select value={liquidityLocation} onChange={(event) => setLiquidityLocation(event.target.value as LiquidityLocation)} disabled={pending}>
+            <option value="bank">Banco</option>
+            <option value="cash">Efectivo</option>
+          </select>
+        </label>
+        <label>
+          Cuenta pago
+          <select value={bankAccountId} onChange={(event) => setBankAccountId(event.target.value)} disabled={pending || liquidityLocation === 'cash'}>
+            <option value="">Seleccionar</option>
+            {bankAccounts.map((account) => <option key={account.id} value={account.id}>{account.display_name}</option>)}
+          </select>
+        </label>
+        <label><span>Referencia pago</span><input value={reference} onChange={(event) => setReference(event.target.value)} disabled={pending} /></label>
+        <button type="button" disabled={pending || !distributionId} onClick={() => void run(() => payLoanProfitDistribution({ distributionId, idempotencyKey: makeIdempotencyKey(), paidDate, liquidityLocation, bankAccountId: liquidityLocation === 'bank' ? bankAccountId : null, reference }))}>Registrar pago</button>
+      </div>
+      <div className="mini-list">
+        {payments.slice(0, 3).map((payment) => <p key={payment.id}>Pago utilidad {formatCop(payment.amount)} / {payment.paid_date} / {payment.reference}</p>)}
+      </div>
+    </section>
+  );
+}
+
 function WithdrawalPreviewPanel() {
   const preview = previewWithdrawal({
     contributions: [
@@ -1186,7 +1624,7 @@ function FutureModules() {
   return (
     <section className="panel wide muted">
       <h2>Modulos posteriores</h2>
-      <p>Liquidaciones, comprobantes privados, banco real, conciliacion, reparto final e importacion productiva quedan bloqueados para HUs posteriores. Esta version no simula saldos ni pagos inexistentes.</p>
+      <p>Importacion productiva, comprobantes privados, restauracion legacy, cierre de ciclos y despliegue quedan bloqueados para HUs posteriores. Esta version registra banco, conciliacion, liquidaciones y utilidad solo por operaciones trazables.</p>
     </section>
   );
 }
@@ -1203,7 +1641,13 @@ function ExportButton({
   loanSchedules,
   pollaActivities,
   pollaContributions,
-  pollaPrizes
+  pollaPrizes,
+  bankAccounts,
+  bankReconciliations,
+  memberSettlements,
+  memberSettlementPayments,
+  loanProfitDistributions,
+  loanProfitDistributionPayments
 }: {
   workspace: Workspace;
   cycle: Cycle;
@@ -1217,6 +1661,12 @@ function ExportButton({
   pollaActivities: PollaActivity[];
   pollaContributions: PollaContribution[];
   pollaPrizes: PollaPrize[];
+  bankAccounts: BankAccount[];
+  bankReconciliations: BankReconciliation[];
+  memberSettlements: MemberSettlement[];
+  memberSettlementPayments: MemberSettlementPayment[];
+  loanProfitDistributions: LoanProfitDistribution[];
+  loanProfitDistributionPayments: LoanProfitDistributionPayment[];
 }) {
   function exportData() {
     const blob = new Blob([
@@ -1232,18 +1682,24 @@ function ExportButton({
         loanSchedules,
         pollaActivities,
         pollaContributions,
-        pollaPrizes
+        pollaPrizes,
+        bankAccounts,
+        bankReconciliations,
+        memberSettlements,
+        memberSettlementPayments,
+        loanProfitDistributions,
+        loanProfitDistributionPayments
       }), null, 2)
     ], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'natillera-manager-ab-export.json';
+    link.download = 'natillera-manager-abc-export.json';
     link.click();
     URL.revokeObjectURL(url);
   }
 
-  return <button type="button" onClick={exportData}>Exportar A+B</button>;
+  return <button type="button" onClick={exportData}>Exportar A+B+C</button>;
 }
 
 function formatNumberForInput(value: Decimal.Value) {

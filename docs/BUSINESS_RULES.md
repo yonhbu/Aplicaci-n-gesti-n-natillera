@@ -23,12 +23,39 @@ HU-001 no confirma liquidaciones, no ejecuta transferencias y no reparte utilida
 ## Registro financiero
 
 - Los saldos visibles de caja, cartera, administracion, utilidad de prestamos, bolsa de polla y premios por pagar se reconstruyen desde operaciones publicadas.
+- Banco, efectivo y ubicacion pendiente son ubicaciones de `cash`; no son otro motor de saldos.
 - Toda operacion financiera multi-registro debe quedar balanceada en servidor: la suma de partidas de una operacion es cero.
 - La idempotencia pertenece a la operacion completa; repetir la misma clave devuelve la misma operacion y no duplica caja.
 - La misma clave con carga economica distinta se rechaza sin insertar derechos ni movimientos parciales.
 - Desembolsos, cobros, aportes de polla, premios y pagos de premios se confirman por RPC transaccional.
 - Cronogramas, cotizaciones y previsualizaciones no son movimientos de caja.
 - Correcciones monetarias futuras deben hacerse por reverso trazable, no borrando historia. La pantalla de reversos no pertenece a B.
+
+## Banco y conciliacion
+
+- Las cuentas bancarias guardan identificacion descriptiva, no credenciales.
+- Un interes bancario recibido es ingreso solo cuando existe movimiento real; una proyeccion de tasa no mueve caja ni utilidad.
+- Las transferencias internas entre banco y efectivo cambian ubicacion de liquidez, no utilidad ni liquidez total.
+- La conciliacion compara saldo externo contra saldo reconstruido al corte; una diferencia no crea ajuste automatico.
+- Movimientos previos sin ubicacion verificable se conservan como ubicacion pendiente.
+
+## Liquidacion
+
+- La liquidacion se ejecuta en tres pasos: previsualizar, confirmar obligacion y registrar pago efectivo.
+- La previsualizacion no cambia saldos y la confirmacion recalcula en servidor con hash de snapshot.
+- El retiro anticipado no incluye utilidad de prestamos ni devolucion de polla.
+- Premios incluidos en liquidacion quedan `settled` y no se pagan otra vez desde polla.
+- La compensacion de deudas no crea entrada de caja. Interes P013 compensado reconoce 10% administracion y 90% fondo una sola vez.
+- Confirmar liquidacion crea obligacion; solo el pago reduce liquidez.
+- Netos negativos quedan bloqueados hasta politica explicita de deuda residual.
+
+## Utilidad neta
+
+- Resultado economico, obligaciones, reservas y liquidez disponible se muestran separados.
+- El 10% de administracion sobre intereses ya satisfechos no se descuenta de nuevo al repartir el fondo.
+- Ahorros, capital de prestamos, transferencias internas y apertura bancaria no son utilidad distribuible.
+- La utilidad de prestamos se reparte igual entre elegibles; `participates_in_loan_profit=false` excluye del reparto.
+- Un reparto confirmado no autoriza pago si la liquidez disponible es insuficiente.
 
 ## Prestamos
 

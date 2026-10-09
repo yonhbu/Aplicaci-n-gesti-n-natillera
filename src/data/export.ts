@@ -1,11 +1,17 @@
 import type {
   Cycle,
   CycleMember,
+  BankAccount,
+  BankReconciliation,
   FinancialOperation,
   LedgerEntry,
+  LoanProfitDistribution,
+  LoanProfitDistributionPayment,
   LoanContract,
   LoanPayment,
   LoanSchedule,
+  MemberSettlement,
+  MemberSettlementPayment,
   PollaActivity,
   PollaContribution,
   PollaPrize,
@@ -41,12 +47,20 @@ export function buildNatilleraExport(input: {
   pollaActivities: PollaActivity[];
   pollaContributions: PollaContribution[];
   pollaPrizes: PollaPrize[];
+  bankAccounts?: BankAccount[];
+  bankReconciliations?: BankReconciliation[];
+  memberSettlements?: MemberSettlement[];
+  memberSettlementPayments?: MemberSettlementPayment[];
+  loanProfitDistributions?: LoanProfitDistribution[];
+  loanProfitDistributionPayments?: LoanProfitDistributionPayment[];
 }) {
   return {
-    format: 'natillera-manager.ab.v1',
+    format: input.bankAccounts ? 'natillera-manager.abc.v1' : 'natillera-manager.ab.v1',
     exportedAt: new Date().toISOString(),
-    scope: 'Modulos implementados en A+B: workspace, ciclo, socios, aportes de ahorro, operaciones financieras, prestamos, cobros, pollas y premios.',
-    warning: 'No es respaldo completo del legacy ni incluye comprobantes privados, banco real, conciliacion, liquidaciones ni migracion productiva.',
+    scope: input.bankAccounts
+      ? 'Modulos implementados en A+B+C: workspace, ciclo, socios, aportes, ledger, prestamos, pollas, banco, conciliacion, liquidaciones y reparto de utilidad.'
+      : 'Modulos implementados en A+B: workspace, ciclo, socios, aportes de ahorro, operaciones financieras, prestamos, cobros, pollas y premios.',
+    warning: 'No es respaldo completo del legacy ni incluye comprobantes privados, importacion productiva ni despliegue.',
     data: input
   };
 }

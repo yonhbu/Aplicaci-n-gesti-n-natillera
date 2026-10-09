@@ -53,3 +53,23 @@ Hecho: la revision de B reprodujo defectos en cronogramas, ahorro sin ledger, so
 Decision: mantener el nucleo operacion/partidas y agregar una migracion incremental correctiva. Ahorro nuevo enlaza ledger en la misma transaccion; prestamos se crean como borrador y se desembolsan aparte; cobros bloquean estado/saldo bajo lock; polla se crea por RPC; y la idempotencia compara payload economico antes de cualquier efecto lateral.
 
 Motivo: corregir historia mediante migraciones nuevas preserva trazabilidad y evita ocultar defectos ya revisados.
+
+## 2026-10-09 - Bloque C sobre el mismo ledger
+
+Hecho: NAT-HU-004 y NAT-HU-005 requieren banco, conciliacion, liquidaciones y reparto sin duplicar saldos ni crear caja ficticia.
+
+Decision: extender `ledger_entries` con ubicacion de liquidez (`bank`, `cash`, `unknown`) y cuenta bancaria opcional solo para partidas `cash`; mantener `financial_operations` como cabecera idempotente comun.
+
+Motivo: banco y efectivo son ubicaciones del activo liquido, no saldos paralelos. Los movimientos previos sin ubicacion verificable quedan como `unknown`.
+
+## 2026-10-09 - Politicas pendientes no se inventan
+
+Decision: penalidad, cuota anual, otros descuentos, reservas y costos se registran con parametros/versiones explicitos. En C los fixtures usan politicas ficticias identificadas; la confirmacion real requiere politica operativa posterior.
+
+Motivo: convertir acuerdos puntuales en regla global o asignar destinos sin evidencia distorsiona utilidad, obligaciones y liquidez.
+
+## 2026-10-09 - Liquidacion y utilidad en dos fases monetarias
+
+Decision: confirmar liquidacion/reparto crea obligaciones y snapshots; el pago efectivo se registra despues contra banco o efectivo con referencia y control de liquidez.
+
+Motivo: una obligacion confirmada no debe disminuir dinero liquido hasta que exista pago real, y un reintento no debe pagar dos veces.

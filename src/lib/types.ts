@@ -82,6 +82,8 @@ export interface LedgerEntry {
   cycle_id: string;
   account: string;
   amount: string;
+  liquidity_location: 'unknown' | 'bank' | 'cash';
+  bank_account_id: string | null;
 }
 
 export interface LoanContract {
@@ -156,6 +158,89 @@ export interface PollaPrize {
   gross_amount: string;
   admin_commission: string;
   net_amount: string;
-  status: 'pending_payment' | 'paid' | 'reversed';
+  status: 'pending_payment' | 'paid' | 'settled' | 'reversed';
   awarded_at: string;
+}
+
+export interface BankAccount {
+  id: string;
+  workspace_id: string;
+  display_name: string;
+  institution_name: string | null;
+  masked_identifier: string | null;
+  status: 'active' | 'archived';
+}
+
+export interface BankReconciliation {
+  id: string;
+  workspace_id: string;
+  cycle_id: string;
+  bank_account_id: string;
+  as_of_date: string;
+  opening_verified_balance: string;
+  opening_date: string;
+  external_balance: string;
+  reconstructed_balance: string;
+  difference_amount: string;
+  status: 'open' | 'matched' | 'difference';
+  reference: string | null;
+}
+
+export interface MemberSettlement {
+  id: string;
+  workspace_id: string;
+  cycle_id: string;
+  cycle_member_id: string;
+  member_id: string;
+  idempotency_key: string;
+  cut_date: string;
+  status: 'confirmed' | 'paid' | 'reversed';
+  preview_hash: string;
+  snapshot: Record<string, unknown>;
+  net_amount: string;
+  transfer_amount: string;
+  rounding_adjustment: string;
+  operation_id: string | null;
+  paid_operation_id: string | null;
+  paid_at: string | null;
+}
+
+export interface MemberSettlementPayment {
+  id: string;
+  workspace_id: string;
+  cycle_id: string;
+  settlement_id: string;
+  amount: string;
+  paid_date: string;
+  liquidity_location: 'bank' | 'cash';
+  bank_account_id: string | null;
+  reference: string;
+}
+
+export interface LoanProfitDistribution {
+  id: string;
+  workspace_id: string;
+  cycle_id: string;
+  idempotency_key: string;
+  cut_date: string;
+  status: 'confirmed' | 'paid' | 'reversed';
+  preview_hash: string;
+  policy_version: string;
+  snapshot: Record<string, unknown>;
+  distributable_amount: string;
+  payment_amount: string;
+  operation_id: string | null;
+  paid_operation_id: string | null;
+}
+
+export interface LoanProfitDistributionPayment {
+  id: string;
+  workspace_id: string;
+  cycle_id: string;
+  distribution_id: string;
+  amount: string;
+  paid_date: string;
+  liquidity_location: 'bank' | 'cash';
+  bank_account_id: string | null;
+  reference: string;
 }

@@ -2,7 +2,7 @@
 
 Aplicacion privada para gestionar la base de Natillera con React, TypeScript, Vite y Supabase.
 
-Estado actual: `NAT-HU-001`, `NAT-HU-002` y `NAT-HU-003` en `READY_FOR_REVIEW`.
+Estado actual: `NAT-HU-001`, `NAT-HU-002`, `NAT-HU-003`, `NAT-HU-004` y `NAT-HU-005` en `READY_FOR_REVIEW`.
 
 ## Alcance HU-001
 
@@ -29,6 +29,16 @@ La HU-001 sigue en `READY_FOR_REVIEW`; las correcciones de revision no la convie
 
 El Bloque B no acepta A como `DONE`, no despliega, no importa datos reales y no habilita liquidaciones, banco real, conciliacion productiva ni comprobantes privados.
 
+## Alcance Bloque C
+
+- Cuentas bancarias descriptivas sin credenciales, movimientos bancarios reales registrados por RPC, ubicacion de liquidez entre banco, efectivo y pendiente.
+- Conciliacion por cuenta/corte con diferencia visible sin crear ajustes automaticos.
+- Liquidacion en tres pasos: previsualizar, confirmar obligacion y registrar pago efectivo separado.
+- Compensacion de prestamos/premios sin caja ficticia, incluyendo acuerdo P013 versionado para primer mes de interes.
+- Reparto de utilidad de prestamos con snapshot, reservas/obligaciones separadas y pago bloqueado si falta liquidez.
+
+El Bloque C no despliega, no importa datos reales, no conecta APIs bancarias, no ejecuta transferencias externas y no habilita migracion completa legacy.
+
 ## Comandos
 
 ```bash
@@ -52,4 +62,4 @@ Copia `.env.example` a `.env.local` y ajusta valores locales. No uses correos re
 
 ## Seguridad
 
-El cliente no contiene claves elevadas. RLS limita lectura por workspace. Los aportes de ahorro, desembolsos, cobros de prestamos, aportes de polla y pagos de premios monetarios se escriben por RPC idempotentes con auditoria y partidas financieras en la misma transaccion.
+El cliente no contiene claves elevadas. RLS limita lectura por workspace. Los aportes de ahorro, desembolsos, cobros de prestamos, aportes de polla, pagos de premios monetarios, movimientos bancarios, liquidaciones y repartos se escriben por RPC idempotentes con auditoria y partidas financieras en la misma transaccion.

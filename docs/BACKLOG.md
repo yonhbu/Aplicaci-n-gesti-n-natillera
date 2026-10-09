@@ -16,9 +16,13 @@ Estado: `READY_FOR_REVIEW` en Bloque B corregido. Pendiente de aceptacion de Jua
 
 Liquidacion atomica con reglas/versiones, compensacion de deudas, administracion y pago separado.
 
+Estado: `READY_FOR_REVIEW` en Bloque C. Pendiente de aceptacion de Juan, politicas reales de destino para penalidad/cuota/otros descuentos y reversos operativos completos.
+
 ## NAT-HU-005
 
 Banco real, conciliacion, reservas, reparto de utilidad neta y dashboard consistente.
+
+Estado: `READY_FOR_REVIEW` en Bloque C para registro bancario manual, conciliacion, reservas y reparto de utilidad de prestamos con fixtures ficticios. Pendiente de aceptacion de Juan, conciliacion real de fuentes actuales, politica real de reservas/costos y migracion D.
 
 ## NAT-HU-006
 

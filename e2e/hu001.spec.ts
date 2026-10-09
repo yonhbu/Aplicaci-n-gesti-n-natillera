@@ -44,6 +44,8 @@ test('OTP, socio, aporte, prestamo, polla, recarga y usuario sin membresia', asy
   const savingsPanel = panelByHeading(page, 'Aportes de ahorro');
   const loansPanel = panelByHeading(page, 'Prestamos y cobros');
   const pollaPanel = panelByHeading(page, 'Pollas y premios');
+  const bankPanel = panelByHeading(page, 'Banco y conciliacion');
+  const settlementPanel = panelByHeading(page, 'Liquidaciones');
 
   await page.getByLabel('Nombre visible').fill(memberName);
   await page.getByLabel('Cuota mensual').fill('100.000');
@@ -79,7 +81,7 @@ test('OTP, socio, aporte, prestamo, polla, recarga y usuario sin membresia', asy
   await expect(page.getByText('Operacion de prestamo confirmada.')).toBeVisible();
   await expect(loansPanel.getByText(new RegExp(`${escapeRegExp(memberName)}.*cartera.*500\\.000`))).toBeVisible();
 
-  await loanField('Prestamo').selectOption({ index: 1 });
+  await selectOptionContaining(loanField('Prestamo'), memberName);
   await loanField('Pago').fill('25.000');
   await loanField('Capital').fill('0');
   await loanField('Interes').fill('25.000');
@@ -95,7 +97,7 @@ test('OTP, socio, aporte, prestamo, polla, recarga y usuario sin membresia', asy
   await pollaPanel.getByRole('button', { name: 'Crear actividad' }).click();
   await expect(page.getByText('Operacion de polla confirmada.')).toBeVisible();
 
-  await pollaField('Actividad').selectOption({ index: 1 });
+  await selectOptionContaining(pollaField('Actividad'), `Polla E2E ${unique}`);
   await pollaField('Participante / ganador').selectOption({ label: memberName });
   await pollaField('Aporte polla').fill('10.000');
   await pollaField('Fecha aporte').fill('2026-10-06');
@@ -105,9 +107,64 @@ test('OTP, socio, aporte, prestamo, polla, recarga y usuario sin membresia', asy
   await pollaField('Premio bruto').fill('40.000');
   await pollaField('Fecha premio').fill('2026-10-06');
   await pollaPanel.getByRole('button', { name: 'Asignar premio' }).click();
-  await expect(pollaPanel.getByText(/neto.*35\.000/)).toBeVisible();
-  await pollaPanel.getByRole('button', { name: 'Pagar neto' }).click();
+  await expect(pollaPanel.getByText(/neto.*35\.000/).first()).toBeVisible();
+  await pollaPanel.getByRole('button', { name: 'Pagar neto' }).first().click();
   await expect(pollaPanel.getByText(/paid/)).toBeVisible();
+
+  const bankField = (label: string) => fieldInPanel(bankPanel, label);
+  await bankField('Cuenta').fill(`Banco E2E ${unique}`);
+  await bankField('Identificador').fill('****2026');
+  await bankPanel.getByRole('button', { name: 'Crear cuenta' }).click();
+  await expect(page.getByText('Operacion bancaria confirmada.')).toBeVisible();
+  await bankField('Cuenta operativa').selectOption({ label: `Banco E2E ${unique}` });
+  await bankField('Fecha').fill('2026-10-01');
+  await bankField('Monto').fill('1.000.000');
+  await bankField('Referencia').fill('apertura E2E ficticia');
+  await bankPanel.getByRole('button', { name: 'Registrar apertura' }).click();
+  await expect(page.getByText('Operacion bancaria confirmada.')).toBeVisible();
+  await bankField('Fecha').fill('2026-10-02');
+  await bankField('Interes bruto').fill('10.000');
+  await bankPanel.getByRole('button', { name: 'Registrar interes' }).click();
+  await expect(page.getByText('Operacion bancaria confirmada.')).toBeVisible();
+  await bankField('Fecha').fill('2026-10-03');
+  await bankField('Comision').fill('1.000');
+  await bankPanel.getByRole('button', { name: 'Registrar comision' }).click();
+  await expect(page.getByText('Operacion bancaria confirmada.')).toBeVisible();
+  await bankField('Fecha').fill('2026-10-04');
+  await bankField('Monto').fill('100.000');
+  await bankPanel.getByRole('button', { name: 'Trasladar a efectivo' }).click();
+  await expect(bankPanel.getByText(/909\.000 en banco/)).toBeVisible();
+  await bankField('Fecha').fill('2026-10-06');
+  await bankField('Saldo externo').fill('908.500');
+  await bankPanel.getByRole('button', { name: 'Conciliar corte' }).click();
+  await expect(bankPanel.getByText(/diferencia.*500/)).toBeVisible();
+
+  const settlementName = `Liquidacion E2E ${unique}`;
+  await page.getByLabel('Nombre visible').fill(settlementName);
+  await page.getByLabel('Cuota mensual').fill('100.000');
+  await page.getByRole('button', { name: 'Crear socio' }).click();
+  await expect(page.getByText('Socio guardado.')).toBeVisible();
+  await savingsPanel.getByLabel('Socio del aporte').selectOption({ label: settlementName });
+  await savingsPanel.getByLabel('Monto recibido').fill('100.000');
+  await savingsPanel.getByLabel('Fecha efectiva').fill('2026-09-23');
+  await savingsPanel.getByLabel('Mes aplicado').selectOption('10');
+  await savingsPanel.getByRole('button', { name: 'Registrar aporte' }).click();
+  await expect(page.getByText('Aporte confirmado por la base.')).toBeVisible();
+
+  const settlementField = (label: string) => fieldInPanel(settlementPanel, label);
+  await settlementField('Socio').selectOption({ label: settlementName });
+  await settlementField('Corte').fill('2026-10-06');
+  await settlementField('Cuota anual').fill('0');
+  await settlementField('Penalidad').fill('0');
+  await settlementPanel.getByRole('button', { name: 'Previsualizar' }).click();
+  await expect(settlementPanel.getByText(/Transferencia/)).toBeVisible();
+  await settlementPanel.getByRole('button', { name: 'Confirmar' }).click();
+  await expect(page.getByText('Liquidacion actualizada.')).toBeVisible();
+  await selectOptionContaining(settlementField('Liquidacion'), settlementName);
+  await settlementField('Cuenta pago').selectOption({ label: `Banco E2E ${unique}` });
+  await settlementField('Referencia pago').fill('pago liquidacion E2E ficticio');
+  await settlementPanel.getByRole('button', { name: 'Registrar pago' }).click();
+  await expect(page.getByText('Liquidacion actualizada.')).toBeVisible();
 
   await page.getByRole('button', { name: 'Salir' }).click();
   await loginWithOtp(page, outsiderEmail);
@@ -135,6 +192,14 @@ function fieldInPanel(panel: Locator, label: string) {
     .filter({ hasText: new RegExp(`^\\s*${escapeRegExp(label)}`) })
     .locator('input, select')
     .first();
+}
+
+async function selectOptionContaining(select: Locator, text: string) {
+  const value = await select.locator('option').filter({ hasText: text }).last().getAttribute('value');
+  if (!value) {
+    throw new Error(`No se encontro opcion que contenga: ${text}`);
+  }
+  await select.selectOption(value);
 }
 
 function escapeRegExp(value: string) {

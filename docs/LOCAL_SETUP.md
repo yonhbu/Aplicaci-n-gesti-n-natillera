@@ -66,7 +66,18 @@ Puertos TEST:
 | Supabase Studio | http://127.0.0.1:55423 |
 | Bandeja local OTP | http://127.0.0.1:55424 |
 
-El E2E de Bloque B crea datos ficticios: socio, aporte, contrato de prestamo fijo de $500.000 con interes mensual explicito, desembolso separado, cobro de $25.000, actividad de polla, aporte con fecha visible, premio bruto de $40.000 y pago neto separado. No usa datos reales ni importa respaldos legacy.
+El E2E de Bloque C crea datos ficticios: socio, aporte, contrato de prestamo fijo de $500.000 con interes mensual explicito, desembolso separado, cobro de $25.000, actividad de polla, aporte con fecha visible, premio bruto de $40.000 y pago neto separado. Tambien registra cuenta bancaria descriptiva, apertura ficticia, interes recibido, comision, traslado interno, conciliacion con diferencia y una liquidacion simple con pago. No usa datos reales ni importa respaldos legacy.
+
+## Recorrido manual C
+
+Usar solo con datos ficticios:
+
+1. Crear una cuenta desde "Banco y conciliacion".
+2. Registrar apertura verificada ficticia, interes recibido, comision y traslado a efectivo.
+3. Conciliar con un saldo externo y revisar la diferencia; no hay ajuste automatico.
+4. Crear socio ficticio y aporte; previsualizar liquidacion con parametros explicitos.
+5. Confirmar liquidacion, verificar que caja no baja, registrar pago con referencia y cuenta.
+6. Previsualizar utilidad con costos/reserva/elegibles y comprobar que el pago se rechaza si no hay liquidez suficiente.
 
 ## Prueba manual RPC idempotente
 
