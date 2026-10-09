@@ -4,6 +4,8 @@ Aplicacion privada para gestionar la base de Natillera con React, TypeScript, Vi
 
 Estado actual: `NAT-HU-001`, `NAT-HU-002`, `NAT-HU-003`, `NAT-HU-004` y `NAT-HU-005` en `READY_FOR_REVIEW`.
 
+Correccion ABC 2026-10-09: se cerraron invariantes de hash de previsualizacion, cortes historicos, idempotencia de reintentos, reversos dependientes, politica aprobada de reparto y centavos residuales. Aun no hay importacion productiva, despliegue ni sustitucion operativa.
+
 ## Alcance HU-001
 
 - Login por OTP de email con usuarios previamente provisionados.
@@ -36,6 +38,7 @@ El Bloque B no acepta A como `DONE`, no despliega, no importa datos reales y no 
 - Liquidacion en tres pasos: previsualizar, confirmar obligacion y registrar pago efectivo separado.
 - Compensacion de prestamos/premios sin caja ficticia, incluyendo acuerdo P013 versionado para primer mes de interes.
 - Reparto de utilidad de prestamos con snapshot, reservas/obligaciones separadas y pago bloqueado si falta liquidez.
+- Politicas de reparto aprobadas explicitamente, residual de centavos no negativo y pagos trazados por beneficiario en snapshot/asignaciones.
 
 El Bloque C no despliega, no importa datos reales, no conecta APIs bancarias, no ejecuta transferencias externas y no habilita migracion completa legacy.
 

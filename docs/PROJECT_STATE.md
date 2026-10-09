@@ -58,23 +58,26 @@ Implementado:
 - Compensacion de premios y prestamos sin entrada ficticia de caja; P013 usa marca de acuerdo `P013_FIRST_MONTH`.
 - Reparto de utilidad de prestamos con politica versionada, reservas/obligaciones separadas, elegibilidad igualitaria y pago bloqueado por liquidez insuficiente.
 - UI operativa para banco, conciliacion, liquidacion y utilidad; exportacion versionada `natillera-manager.abc.v1`.
+- Correccion ABC 2026-10-09: regresiones reproducidas para hash nulo, corte historico, idempotencia de reintentos, reversos, politica aprobada, centavos residuales y aperturas unicas.
+- UI B/C conserva claves idempotentes pendientes por accion financiera y bloquea reemplazar una operacion incierta con otra carga.
 
 Limites vigentes de C:
 
 - Politicas reales de destino para penalidad, cuota anual, reservas y costos siguen pendientes de confirmacion operativa; los fixtures usan parametros ficticios identificados.
 - No hay importacion productiva de JSON/CSV, comprobantes privados, conexion bancaria externa, despliegue ni cierre de ciclo.
 - Reversos de liquidaciones/repartos con dependencias quedan bloqueados para flujo dedicado; no se borra historia.
+- No se implemento importacion D; solo queda preparado el criterio para inventario/ensayo posterior.
 
 ## Verificaciones ejecutadas
 
 - `npm run check:secrets`: aprobado.
 - `npm run typecheck`: aprobado.
-- `npm run test`: 8 archivos, 27 pruebas aprobadas.
+- `npm run test`: aprobado tras correcciones ABC, 9 archivos y 31 pruebas.
 - `npm run build`: aprobado.
 - `npm run test:infra:reset`: aprobado sobre `.supabase-test`.
-- `npm run test:rls`: aprobado en Bloque C con 4 archivos SQL, 116 pruebas.
+- `npm run test:rls`: aprobado tras correcciones ABC con 5 archivos SQL, 144 pruebas.
 - `npm run test:e2e`: 2 pruebas aprobadas, proyectos `chromium` y `mobile`.
-- Bloque C: `npm run typecheck` aprobado; `npm run test` aprobado, 8 archivos y 27 pruebas; `npm run test:infra:reset && npm run test:e2e` aprobado, 2 pruebas.
+- Bloque C/ABC corregido: `npm run typecheck` aprobado; `npm run test` aprobado, 9 archivos y 31 pruebas; `npm run test:rls` aprobado, 5 archivos SQL y 144 pruebas; `PLAYWRIGHT_PORT=5177 npm run test:e2e` aprobado, 2 pruebas.
 - Servidor Vite local: responde en `http://127.0.0.1:5176`.
 - Rama local de Bloque B: `feature/block-b-hu002-hu003`.
 - Manifiesto SHA-256 local de fuentes entregadas: `incoming/manifests/legacy-sources-2026-10-06.sha256.json`, ignorado por Git.

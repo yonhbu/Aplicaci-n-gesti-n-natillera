@@ -23,9 +23,9 @@ Actua como asesor estrategico y critico. Prioriza verdad, precision y utilidad s
 - El frontend solo puede usar `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY`.
 - No crear workspaces desde el cliente cuando un usuario no tiene membresia.
 - Operaciones financieras que requieran atomicidad van en SQL/RPC, no como secuencias de escrituras React.
-- No habilitar prestamos, pollas, liquidaciones reales ni comprobantes privados hasta sus HUs.
+- Prestamos, pollas, banco manual, liquidaciones y utilidad estan implementados localmente en A+B+C, pero siguen en `READY_FOR_REVIEW`; no habilitar importacion productiva, despliegue, cierre de ciclo ni comprobantes privados hasta sus HUs.
 - Cada entrega termina en `READY_FOR_REVIEW`; solo Juan puede aceptar y pasar a `DONE`.
 
 ## HU activa
 
-`NAT-HU-001` esta implementada localmente y queda en `READY_FOR_REVIEW`. Cualquier siguiente trabajo debe partir del codigo y documentos actuales, no del prompt original como unica fuente.
+`NAT-HU-001` a `NAT-HU-005` estan implementadas localmente y quedan en `READY_FOR_REVIEW`. Las correcciones ABC del 2026-10-09 parten del codigo y documentos actuales; no convierten el sistema en reemplazo operativo ni migracion completa.

@@ -27,9 +27,10 @@ HU-001 no confirma liquidaciones, no ejecuta transferencias y no reparte utilida
 - Toda operacion financiera multi-registro debe quedar balanceada en servidor: la suma de partidas de una operacion es cero.
 - La idempotencia pertenece a la operacion completa; repetir la misma clave devuelve la misma operacion y no duplica caja.
 - La misma clave con carga economica distinta se rechaza sin insertar derechos ni movimientos parciales.
+- En RPC financieras, la clave idempotente se resuelve antes de validar estados o saldos cambiados por el primer commit de la misma operacion.
 - Desembolsos, cobros, aportes de polla, premios y pagos de premios se confirman por RPC transaccional.
 - Cronogramas, cotizaciones y previsualizaciones no son movimientos de caja.
-- Correcciones monetarias futuras deben hacerse por reverso trazable, no borrando historia. La pantalla de reversos no pertenece a B.
+- Correcciones monetarias futuras deben hacerse por reverso trazable, no borrando historia. Reversos genericos se rechazan cuando dejarian entidades desincronizadas; pagos de liquidacion/reparto pueden reabrir su obligacion y los desembolsos con cobros/compensaciones quedan bloqueados.
 
 ## Banco y conciliacion
 
@@ -38,11 +39,16 @@ HU-001 no confirma liquidaciones, no ejecuta transferencias y no reparte utilida
 - Las transferencias internas entre banco y efectivo cambian ubicacion de liquidez, no utilidad ni liquidez total.
 - La conciliacion compara saldo externo contra saldo reconstruido al corte; una diferencia no crea ajuste automatico.
 - Movimientos previos sin ubicacion verificable se conservan como ubicacion pendiente.
+- Una apertura bancaria es unica por cuenta/ciclo. Entradas posteriores requieren tipo distinto y procedencia documentada.
+- Movimientos B nuevos sin cuenta bancaria explicita se registran como efectivo, no como ubicacion desconocida.
 
 ## Liquidacion
 
 - La liquidacion se ejecuta en tres pasos: previsualizar, confirmar obligacion y registrar pago efectivo.
 - La previsualizacion no cambia saldos y la confirmacion recalcula en servidor con hash de snapshot.
+- Un hash nulo, vacio u obsoleto se rechaza explicitamente; el snapshot incluye fuentes/versiones relevantes.
+- La deuda al corte se reconstruye por operaciones fechadas y reversos efectivos al corte; cobros posteriores no reducen una previsualizacion historica.
+- Si una confirmacion retroactiva chocaria con cobros posteriores ya publicados, se rechaza hasta tener politica explicita.
 - El retiro anticipado no incluye utilidad de prestamos ni devolucion de polla.
 - Premios incluidos en liquidacion quedan `settled` y no se pagan otra vez desde polla.
 - La compensacion de deudas no crea entrada de caja. Interes P013 compensado reconoce 10% administracion y 90% fondo una sola vez.
@@ -56,6 +62,9 @@ HU-001 no confirma liquidaciones, no ejecuta transferencias y no reparte utilida
 - Ahorros, capital de prestamos, transferencias internas y apertura bancaria no son utilidad distribuible.
 - La utilidad de prestamos se reparte igual entre elegibles; `participates_in_loan_profit=false` excluye del reparto.
 - Un reparto confirmado no autoriza pago si la liquidez disponible es insuficiente.
+- La politica de reparto debe existir y estar aprobada para el ciclo; un texto libre no autoriza distribuciones.
+- La suma asignada a beneficiarios nunca puede superar el distribuible; los centavos no asignables quedan como residual no negativo pendiente.
+- El pago de utilidad conserva asignaciones por beneficiario y referencia de pago.
 
 ## Prestamos
 

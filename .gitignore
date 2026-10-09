@@ -9,6 +9,7 @@ test-results/
 .supabase/
 .supabase-test/
 supabase/.temp/
+supabase/.branches/
 incoming/
 *.zip
 *.log

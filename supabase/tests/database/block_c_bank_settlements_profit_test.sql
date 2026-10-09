@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap;
-select plan(39);
+select plan(40);
 
 insert into auth.users (id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
 values
@@ -155,7 +155,7 @@ select throws_ok(
 );
 
 select lives_ok(
-  $$ select public.record_bank_opening('23000000-0000-0000-0000-000000000001', (select id from public.bank_accounts where display_name = 'Banco ficticio C'), 'bank-finance-settlements-c', '2026-10-07', 2000000, 'financiacion sintetica ficticia para pagos C') $$,
+  $$ select public.record_bank_external_financing('23000000-0000-0000-0000-000000000001', (select id from public.bank_accounts where display_name = 'Banco ficticio C'), 'bank-finance-settlements-c', '2026-10-07', 2000000, 'financiacion sintetica ficticia para pagos C') $$,
   'agrega financiacion sintetica suficiente para pagos de fixture'
 );
 select lives_ok(
@@ -205,6 +205,11 @@ begin
   perform public.record_loan_payment(loan_id, 'utility-interest-c', '2026-10-01', 200000, 100000, 100000, 'regular');
   perform public.record_manual_cash_movement('23000000-0000-0000-0000-000000000002', 'utility-expense-c', '2026-10-02', 70000, 'expense', 'costo ficticio para liquidez 30000');
 end $$;
+
+select lives_ok(
+  $$ select public.create_loan_profit_distribution_policy('23000000-0000-0000-0000-000000000002', 'TEST-C', 'politica ficticia aprobada para pruebas C') $$,
+  'registra politica aprobada de reparto TEST-C'
+);
 
 select is(((public.preview_loan_profit_distribution('23000000-0000-0000-0000-000000000002', '2026-10-06', 'TEST-C', 10000, 20000, 15000))->>'distributable')::numeric, 45000::numeric, 'utilidad distribuible es 45000 sin segundo 10%');
 select is(((public.preview_loan_profit_distribution('23000000-0000-0000-0000-000000000002', '2026-10-06', 'TEST-C', 10000, 20000, 15000))->>'per_member')::numeric, 5000::numeric, 'nueve elegibles reciben 5000 cada uno');

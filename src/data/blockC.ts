@@ -35,11 +35,13 @@ export interface ProfitDistributionPreview {
   committed_yield: number;
   reserve: number;
   distributable: number;
+  economic_deficit_before_floor: number;
   eligible_count: number;
   per_member: number;
   rounding_residual: number;
   liquidity_available: number;
   liquidity_deficit: number;
+  policy_approved: boolean;
   confirmation_allowed: boolean;
 }
 
@@ -139,6 +141,18 @@ export async function createBankAccount(input: {
 
 export async function recordBankOpening(input: { cycleId: string; bankAccountId: string; idempotencyKey: string; effectiveDate: string; amount: string; reference: string }) {
   const { error } = await supabase.rpc('record_bank_opening', {
+    p_cycle_id: input.cycleId,
+    p_bank_account_id: input.bankAccountId,
+    p_idempotency_key: input.idempotencyKey,
+    p_effective_date: input.effectiveDate,
+    p_amount: input.amount,
+    p_reference: input.reference
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function recordBankExternalFinancing(input: { cycleId: string; bankAccountId: string; idempotencyKey: string; effectiveDate: string; amount: string; reference: string }) {
+  const { error } = await supabase.rpc('record_bank_external_financing', {
     p_cycle_id: input.cycleId,
     p_bank_account_id: input.bankAccountId,
     p_idempotency_key: input.idempotencyKey,
@@ -261,6 +275,15 @@ export async function previewLoanProfitDistribution(input: { cycleId: string; cu
   });
   if (error) throw new Error(error.message);
   return data as ProfitDistributionPreview;
+}
+
+export async function createLoanProfitDistributionPolicy(input: { cycleId: string; policyVersion: string; description: string }) {
+  const { error } = await supabase.rpc('create_loan_profit_distribution_policy', {
+    p_cycle_id: input.cycleId,
+    p_policy_version: input.policyVersion,
+    p_description: input.description
+  });
+  if (error) throw new Error(error.message);
 }
 
 export async function confirmLoanProfitDistribution(input: { cycleId: string; idempotencyKey: string; cutDate: string; policyVersion: string; costsAmount: string; committedYieldAmount: string; reserveAmount: string; previewHash: string }) {

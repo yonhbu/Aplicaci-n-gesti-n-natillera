@@ -48,6 +48,7 @@ export async function createLoanContract(input: {
   cycleId: string;
   borrowerMemberId: string | null;
   externalBorrowerName: string | null;
+  referredByMemberId: string | null;
   principal: string;
   method: string;
   rateUnit: string;
@@ -61,7 +62,7 @@ export async function createLoanContract(input: {
     p_idempotency_key: input.idempotencyKey,
     p_borrower_member_id: input.borrowerMemberId,
     p_external_borrower_name: input.externalBorrowerName,
-    p_referred_by_member_id: null,
+    p_referred_by_member_id: input.referredByMemberId,
     p_principal: input.principal,
     p_method: input.method,
     p_rate_unit: input.rateUnit,

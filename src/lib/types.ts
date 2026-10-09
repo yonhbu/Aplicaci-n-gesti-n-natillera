@@ -215,6 +215,7 @@ export interface MemberSettlementPayment {
   liquidity_location: 'bank' | 'cash';
   bank_account_id: string | null;
   reference: string;
+  status: 'posted' | 'reversed';
 }
 
 export interface LoanProfitDistribution {
@@ -243,4 +244,5 @@ export interface LoanProfitDistributionPayment {
   liquidity_location: 'bank' | 'cash';
   bank_account_id: string | null;
   reference: string;
+  status: 'posted' | 'reversed';
 }

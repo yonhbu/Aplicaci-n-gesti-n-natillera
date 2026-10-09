@@ -5,8 +5,10 @@ config({ path: '.env.test.local', override: true, quiet: true });
 
 const devCommand =
   process.platform === 'win32'
-    ? 'set SUPABASE_ENV=test&& npm run dev -- --mode test --host 127.0.0.1'
-    : 'SUPABASE_ENV=test npm run dev -- --mode test --host 127.0.0.1';
+    ? `set SUPABASE_ENV=test&& npm run dev -- --mode test --host 127.0.0.1 --port ${process.env.PLAYWRIGHT_PORT ?? '5176'}`
+    : `SUPABASE_ENV=test npm run dev -- --mode test --host 127.0.0.1 --port ${process.env.PLAYWRIGHT_PORT ?? '5176'}`;
+
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT ?? '5176'}`;
 
 export default defineConfig({
   testDir: './e2e',
@@ -14,7 +16,7 @@ export default defineConfig({
   workers: 1,
   expect: { timeout: 5_000 },
   use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:5176',
+    baseURL,
     channel: 'chrome',
     trace: 'on-first-retry'
   },
@@ -24,7 +26,7 @@ export default defineConfig({
   ],
   webServer: {
     command: devCommand,
-    url: 'http://127.0.0.1:5176',
+    url: baseURL,
     reuseExistingServer: false
   }
 });

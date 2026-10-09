@@ -7,6 +7,7 @@ import {
   confirmMemberSettlement,
   createBankAccount,
   createBankReconciliation,
+  createLoanProfitDistributionPolicy,
   listBankAccounts,
   listBankReconciliations,
   listLoanProfitDistributionPayments,
@@ -18,6 +19,7 @@ import {
   previewLoanProfitDistribution,
   previewMemberSettlement,
   recordBankFee,
+  recordBankExternalFinancing,
   recordBankInterest,
   recordBankOpening,
   recordLiquidityTransfer,
@@ -40,6 +42,7 @@ import { buildPendingContributionOperation, type PendingContributionOperation } 
 import type { ContributionMethod } from '../domain/savings';
 import { previewWithdrawal } from '../domain/withdrawal';
 import { clearPendingContribution, readPendingContribution, writePendingContribution } from '../lib/pendingContributionStorage';
+import { clearPendingFinancialOperation, getOrCreatePendingFinancialOperation, writePendingFinancialOperation, type PendingFinancialOperation } from '../lib/pendingFinancialOperationStorage';
 import { supabase } from '../lib/supabase';
 import type { BankAccount, BankReconciliation, Cycle, CycleMember, FinancialOperation, LedgerEntry, LoanContract, LoanPayment, LoanProfitDistribution, LoanProfitDistributionPayment, LoanSchedule, MemberSettlement, MemberSettlementPayment, PollaActivity, PollaContribution, PollaPrize, SavingsContribution, Workspace } from '../lib/types';
 import { userSafeError } from '../lib/userMessages';
@@ -63,6 +66,38 @@ type ViewState = 'loading' | 'anonymous' | 'ready' | 'no-access' | 'error';
 
 function makeIdempotencyKey() {
   return `ui-${crypto.randomUUID()}`;
+}
+
+function isAmbiguousOperationError(error: unknown) {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return message.includes('failed to fetch') || message.includes('network') || message.includes('timeout') || message.includes('aborted');
+}
+
+async function runPendingFinancialAction(input: {
+  scope: string;
+  payload: Record<string, unknown>;
+  setPending: (value: boolean) => void;
+  onSaved: () => Promise<void>;
+  onError: (error: unknown) => void;
+  action: (idempotencyKey: string) => Promise<unknown>;
+}) {
+  input.setPending(true);
+  let operation: PendingFinancialOperation | null = null;
+  try {
+    operation = getOrCreatePendingFinancialOperation(input.scope, input.payload, makeIdempotencyKey);
+    await input.action(operation.idempotencyKey);
+    clearPendingFinancialOperation(input.scope);
+    await input.onSaved();
+  } catch (error) {
+    if (operation && isAmbiguousOperationError(error)) {
+      writePendingFinancialOperation({ ...operation, status: 'uncertain' });
+    } else if (operation) {
+      clearPendingFinancialOperation(input.scope);
+    }
+    input.onError(error);
+  } finally {
+    input.setPending(false);
+  }
 }
 
 export function App() {
@@ -812,6 +847,7 @@ function LoansPanel({
 }) {
   const [borrowerMemberId, setBorrowerMemberId] = useState('');
   const [externalName, setExternalName] = useState('');
+  const [referredByMemberId, setReferredByMemberId] = useState('');
   const [principal, setPrincipal] = useState('500.000');
   const [method, setMethod] = useState('fixed_interest');
   const [rateUnit, setRateUnit] = useState('MONTHLY_FIXED');
@@ -837,59 +873,77 @@ function LoansPanel({
 
   async function submitLoan(event: React.FormEvent) {
     event.preventDefault();
-    setPending(true);
-    try {
-      await createLoanContract({
+    const payload = {
+      cycleId: cycle.id,
+      borrowerMemberId: borrowerMemberId || null,
+      externalBorrowerName: borrowerMemberId ? null : externalName,
+      referredByMemberId: referredByMemberId || null,
+      principal: toDatabaseMoney(parseCop(principal, 'principal')),
+      method,
+      rateUnit,
+      rateValue: parseCop(rateValue, 'tasa').div(100).toString(),
+      termMonths,
+      startDate
+    };
+    await runPendingFinancialAction({
+      scope: `loan:create:${cycle.id}`,
+      payload,
+      setPending,
+      onSaved,
+      onError,
+      action: (idempotencyKey) => createLoanContract({
         cycleId: cycle.id,
-        borrowerMemberId: borrowerMemberId || null,
-        externalBorrowerName: borrowerMemberId ? null : externalName,
-        principal: toDatabaseMoney(parseCop(principal, 'principal')),
+        borrowerMemberId: payload.borrowerMemberId,
+        externalBorrowerName: payload.externalBorrowerName,
+        referredByMemberId: payload.referredByMemberId,
+        principal: payload.principal,
         method,
         rateUnit,
-        rateValue: parseCop(rateValue, 'tasa').div(100).toString(),
+        rateValue: payload.rateValue,
         termMonths,
         startDate,
-        idempotencyKey: makeIdempotencyKey()
-      });
-      await onSaved();
-    } catch (error) {
-      onError(error);
-    } finally {
-      setPending(false);
-    }
+        idempotencyKey
+      })
+    });
   }
 
   async function disburseLoan(loanId: string) {
-    setPending(true);
-    try {
-      await confirmLoanDisbursement(loanId, startDate, makeIdempotencyKey());
-      await onSaved();
-    } catch (error) {
-      onError(error);
-    } finally {
-      setPending(false);
-    }
+    await runPendingFinancialAction({
+      scope: `loan:disburse:${cycle.id}:${loanId}`,
+      payload: { loanId, startDate },
+      setPending,
+      onSaved,
+      onError,
+      action: (idempotencyKey) => confirmLoanDisbursement(loanId, startDate, idempotencyKey)
+    });
   }
 
   async function submitPayment(event: React.FormEvent) {
     event.preventDefault();
-    setPending(true);
-    try {
-      await recordLoanPayment({
+    const payload = {
+      loanId: selectedLoanId,
+      paymentDate,
+      amount: toDatabaseMoney(parseCop(paymentAmount, 'pago')),
+      capitalAmount: toDatabaseMoney(parseCop(capitalAmount, 'capital')),
+      interestAmount: toDatabaseMoney(parseCop(interestAmount, 'interes')),
+      kind: paymentKind
+    };
+    await runPendingFinancialAction({
+      scope: `loan:payment:${cycle.id}:${selectedLoanId}`,
+      payload,
+      setPending,
+      onSaved,
+      onError,
+      action: (idempotencyKey) => recordLoanPayment({
         loanId: selectedLoanId,
-        idempotencyKey: makeIdempotencyKey(),
+        idempotencyKey,
         paymentDate,
-        amount: toDatabaseMoney(parseCop(paymentAmount, 'pago')),
-        capitalAmount: toDatabaseMoney(parseCop(capitalAmount, 'capital')),
-        interestAmount: toDatabaseMoney(parseCop(interestAmount, 'interes')),
+        amount: payload.amount,
+        capitalAmount: payload.capitalAmount,
+        interestAmount: payload.interestAmount,
         kind: paymentKind
-      });
-      await onSaved();
-    } catch (error) {
-      onError(error);
-    } finally {
-      setPending(false);
-    }
+      })
+    });
   }
 
   async function quotePrepayment() {
@@ -915,16 +969,17 @@ function LoansPanel({
     if (!selectedLoanId) {
       return;
     }
-    setPending(true);
-    try {
-      await confirmLoanPrepayment(selectedLoanId, paymentDate, makeIdempotencyKey());
-      setPrepaymentQuote(null);
-      await onSaved();
-    } catch (error) {
-      onError(error);
-    } finally {
-      setPending(false);
-    }
+    await runPendingFinancialAction({
+      scope: `loan:prepayment:${cycle.id}:${selectedLoanId}`,
+      payload: { loanId: selectedLoanId, paymentDate, quote: prepaymentQuote },
+      setPending,
+      onSaved: async () => {
+        setPrepaymentQuote(null);
+        await onSaved();
+      },
+      onError,
+      action: (idempotencyKey) => confirmLoanPrepayment(selectedLoanId, paymentDate, idempotencyKey)
+    });
   }
 
   async function markSelectedLoanP013() {
@@ -956,6 +1011,13 @@ function LoansPanel({
         <label>
           Deudor externo
           <input value={externalName} onChange={(event) => setExternalName(event.target.value)} disabled={pending || Boolean(borrowerMemberId)} />
+        </label>
+        <label>
+          Referido por
+          <select value={referredByMemberId} onChange={(event) => setReferredByMemberId(event.target.value)} disabled={pending}>
+            <option value="">Sin referido</option>
+            {cycleMembers.map((item) => <option key={item.id} value={item.member_id}>{item.member?.display_name}</option>)}
+          </select>
         </label>
         <label>
           Principal
@@ -1073,52 +1135,61 @@ function PollaPanel({
 
   async function submitContribution(event: React.FormEvent) {
     event.preventDefault();
-    setPending(true);
-    try {
-      await registerPollaContribution({
+    const payload = {
+      activityId,
+      cycleMemberId,
+      amount: toDatabaseMoney(parseCop(pollaAmount, 'aporte polla')),
+      paidDate: pollaPaidDate
+    };
+    await runPendingFinancialAction({
+      scope: `polla:contribution:${cycle.id}:${activityId}:${cycleMemberId}`,
+      payload,
+      setPending,
+      onSaved,
+      onError,
+      action: (idempotencyKey) => registerPollaContribution({
         activityId,
         cycleMemberId,
-        amount: toDatabaseMoney(parseCop(pollaAmount, 'aporte polla')),
+        amount: payload.amount,
         paidDate: pollaPaidDate,
-        idempotencyKey: makeIdempotencyKey()
-      });
-      await onSaved();
-    } catch (error) {
-      onError(error);
-    } finally {
-      setPending(false);
-    }
+        idempotencyKey
+      })
+    });
   }
 
   async function submitPrize(event: React.FormEvent) {
     event.preventDefault();
-    setPending(true);
-    try {
-      await awardPollaPrize({
+    const payload = {
+      activityId,
+      winnerCycleMemberId: cycleMemberId,
+      grossAmount: toDatabaseMoney(parseCop(prizeGross, 'premio bruto')),
+      awardedAt: prizeAwardedAt
+    };
+    await runPendingFinancialAction({
+      scope: `polla:prize:${cycle.id}:${activityId}:${cycleMemberId}`,
+      payload,
+      setPending,
+      onSaved,
+      onError,
+      action: (idempotencyKey) => awardPollaPrize({
         activityId,
         winnerCycleMemberId: cycleMemberId,
-        grossAmount: toDatabaseMoney(parseCop(prizeGross, 'premio bruto')),
+        grossAmount: payload.grossAmount,
         awardedAt: prizeAwardedAt,
-        idempotencyKey: makeIdempotencyKey()
-      });
-      await onSaved();
-    } catch (error) {
-      onError(error);
-    } finally {
-      setPending(false);
-    }
+        idempotencyKey
+      })
+    });
   }
 
   async function payPrize(prizeId: string) {
-    setPending(true);
-    try {
-      await payPollaPrize(prizeId, prizePaidDate, makeIdempotencyKey());
-      await onSaved();
-    } catch (error) {
-      onError(error);
-    } finally {
-      setPending(false);
-    }
+    await runPendingFinancialAction({
+      scope: `polla:pay-prize:${cycle.id}:${prizeId}`,
+      payload: { prizeId, prizePaidDate },
+      setPending,
+      onSaved,
+      onError,
+      action: (idempotencyKey) => payPollaPrize(prizeId, prizePaidDate, idempotencyKey)
+    });
   }
 
   return (
@@ -1239,6 +1310,17 @@ function BankPanel({
     }
   }
 
+  async function runFinancial(actionName: string, payload: Record<string, unknown>, action: (idempotencyKey: string) => Promise<unknown>) {
+    await runPendingFinancialAction({
+      scope: `bank:${actionName}:${cycle.id}:${selectedBank}`,
+      payload,
+      setPending,
+      onSaved,
+      onError,
+      action
+    });
+  }
+
   const selectedBank = bankAccountId || bankAccounts[0]?.id || '';
 
   return (
@@ -1259,12 +1341,13 @@ function BankPanel({
         <label><span>Fecha</span><input type="date" value={effectiveDate} onChange={(event) => setEffectiveDate(event.target.value)} disabled={pending} /></label>
         <label><span>Monto</span><input value={amount} onChange={(event) => setAmount(event.target.value)} disabled={pending} /></label>
         <label><span>Referencia</span><input value={reference} onChange={(event) => setReference(event.target.value)} disabled={pending} /></label>
-        <button type="button" disabled={pending || !selectedBank} onClick={() => void run(() => recordBankOpening({ cycleId: cycle.id, bankAccountId: selectedBank, idempotencyKey: makeIdempotencyKey(), effectiveDate, amount: toDatabaseMoney(parseCop(amount, 'apertura')), reference }))}>Registrar apertura</button>
+        <button type="button" disabled={pending || !selectedBank} onClick={() => void runFinancial('opening', { effectiveDate, amount: toDatabaseMoney(parseCop(amount, 'apertura')), reference }, (idempotencyKey) => recordBankOpening({ cycleId: cycle.id, bankAccountId: selectedBank, idempotencyKey, effectiveDate, amount: toDatabaseMoney(parseCop(amount, 'apertura')), reference }))}>Registrar apertura</button>
+        <button type="button" disabled={pending || !selectedBank} onClick={() => void runFinancial('external-financing', { effectiveDate, amount: toDatabaseMoney(parseCop(amount, 'financiacion')), reference }, (idempotencyKey) => recordBankExternalFinancing({ cycleId: cycle.id, bankAccountId: selectedBank, idempotencyKey, effectiveDate, amount: toDatabaseMoney(parseCop(amount, 'financiacion')), reference }))}>Registrar financiacion</button>
         <label><span>Interes bruto</span><input value={interestGross} onChange={(event) => setInterestGross(event.target.value)} disabled={pending} /></label>
-        <button type="button" disabled={pending || !selectedBank} onClick={() => void run(() => recordBankInterest({ cycleId: cycle.id, bankAccountId: selectedBank, idempotencyKey: makeIdempotencyKey(), effectiveDate, grossAmount: toDatabaseMoney(parseCop(interestGross, 'interes')), withholdingAmount: '0.00', feeAmount: '0.00', reference }))}>Registrar interes</button>
+        <button type="button" disabled={pending || !selectedBank} onClick={() => void runFinancial('interest', { effectiveDate, grossAmount: toDatabaseMoney(parseCop(interestGross, 'interes')), withholdingAmount: '0.00', feeAmount: '0.00', reference }, (idempotencyKey) => recordBankInterest({ cycleId: cycle.id, bankAccountId: selectedBank, idempotencyKey, effectiveDate, grossAmount: toDatabaseMoney(parseCop(interestGross, 'interes')), withholdingAmount: '0.00', feeAmount: '0.00', reference }))}>Registrar interes</button>
         <label><span>Comision</span><input value={feeAmount} onChange={(event) => setFeeAmount(event.target.value)} disabled={pending} /></label>
-        <button type="button" disabled={pending || !selectedBank} onClick={() => void run(() => recordBankFee({ cycleId: cycle.id, bankAccountId: selectedBank, idempotencyKey: makeIdempotencyKey(), effectiveDate, amount: toDatabaseMoney(parseCop(feeAmount, 'comision')), reference }))}>Registrar comision</button>
-        <button type="button" disabled={pending || !selectedBank} onClick={() => void run(() => recordLiquidityTransfer({ cycleId: cycle.id, idempotencyKey: makeIdempotencyKey(), effectiveDate, fromLocation: 'bank', fromBankAccountId: selectedBank, toLocation: 'cash', toBankAccountId: null, amount: toDatabaseMoney(parseCop(amount, 'traslado')), reference }))}>Trasladar a efectivo</button>
+        <button type="button" disabled={pending || !selectedBank} onClick={() => void runFinancial('fee', { effectiveDate, amount: toDatabaseMoney(parseCop(feeAmount, 'comision')), reference }, (idempotencyKey) => recordBankFee({ cycleId: cycle.id, bankAccountId: selectedBank, idempotencyKey, effectiveDate, amount: toDatabaseMoney(parseCop(feeAmount, 'comision')), reference }))}>Registrar comision</button>
+        <button type="button" disabled={pending || !selectedBank} onClick={() => void runFinancial('transfer', { effectiveDate, fromLocation: 'bank', fromBankAccountId: selectedBank, toLocation: 'cash', toBankAccountId: null, amount: toDatabaseMoney(parseCop(amount, 'traslado')), reference }, (idempotencyKey) => recordLiquidityTransfer({ cycleId: cycle.id, idempotencyKey, effectiveDate, fromLocation: 'bank', fromBankAccountId: selectedBank, toLocation: 'cash', toBankAccountId: null, amount: toDatabaseMoney(parseCop(amount, 'traslado')), reference }))}>Trasladar a efectivo</button>
         <label><span>Saldo externo</span><input value={externalBalance} onChange={(event) => setExternalBalance(event.target.value)} disabled={pending} /></label>
         <button type="button" disabled={pending || !selectedBank} onClick={() => void run(() => createBankReconciliation({ cycleId: cycle.id, bankAccountId: selectedBank, openingVerifiedBalance: '0.00', openingDate: cycle.starts_on, externalBalance: toDatabaseMoney(parseCop(externalBalance, 'saldo externo')), asOfDate: effectiveDate, reference }))}>Conciliar corte</button>
       </div>
@@ -1307,18 +1390,6 @@ function SettlementPanel({
   const [reference, setReference] = useState('transferencia ficticia');
   const [pending, setPending] = useState(false);
 
-  async function run(action: () => Promise<unknown>) {
-    setPending(true);
-    try {
-      await action();
-      await onSaved();
-    } catch (error) {
-      onError(error);
-    } finally {
-      setPending(false);
-    }
-  }
-
   async function previewSettlement() {
     if (!cycleMemberId) return;
     setPending(true);
@@ -1337,6 +1408,44 @@ function SettlementPanel({
     }
   }
 
+  async function confirmSettlement() {
+    if (!preview) return;
+    const payload = {
+      cycleMemberId,
+      cutDate,
+      annualAdminFee: toDatabaseMoney(parseCop(annualFee, 'cuota anual')),
+      penaltyAmount: toDatabaseMoney(parseCop(penalty, 'penalidad')),
+      otherDiscounts: toDatabaseMoney(parseCop(otherDiscounts, 'otros descuentos')),
+      previewHash: preview.preview_hash
+    };
+    await runPendingFinancialAction({
+      scope: `settlement:confirm:${cycleMemberId}`,
+      payload,
+      setPending,
+      onSaved,
+      onError,
+      action: (idempotencyKey) => confirmMemberSettlement({ ...payload, idempotencyKey })
+    });
+  }
+
+  async function paySettlement() {
+    const payload = {
+      settlementId,
+      paidDate,
+      liquidityLocation,
+      bankAccountId: liquidityLocation === 'bank' ? bankAccountId : null,
+      reference
+    };
+    await runPendingFinancialAction({
+      scope: `settlement:pay:${settlementId}`,
+      payload,
+      setPending,
+      onSaved,
+      onError,
+      action: (idempotencyKey) => payMemberSettlement({ ...payload, idempotencyKey })
+    });
+  }
+
   return (
     <section className="panel">
       <h2>Liquidaciones</h2>
@@ -1353,7 +1462,7 @@ function SettlementPanel({
         <label><span>Penalidad</span><input value={penalty} onChange={(event) => setPenalty(event.target.value)} disabled={pending} /></label>
         <label><span>Otros descuentos</span><input value={otherDiscounts} onChange={(event) => setOtherDiscounts(event.target.value)} disabled={pending} /></label>
         <button type="button" disabled={pending || !cycleMemberId} onClick={() => void previewSettlement()}>Previsualizar</button>
-        <button type="button" disabled={pending || !cycleMemberId || !preview} onClick={() => void run(() => confirmMemberSettlement({ cycleMemberId, idempotencyKey: makeIdempotencyKey(), cutDate, annualAdminFee: toDatabaseMoney(parseCop(annualFee, 'cuota anual')), penaltyAmount: toDatabaseMoney(parseCop(penalty, 'penalidad')), otherDiscounts: toDatabaseMoney(parseCop(otherDiscounts, 'otros descuentos')), previewHash: preview?.preview_hash ?? '' }))}>Confirmar</button>
+        <button type="button" disabled={pending || !cycleMemberId || !preview} onClick={() => void confirmSettlement()}>Confirmar</button>
       </div>
       {preview ? (
         <dl className="definition-grid">
@@ -1392,7 +1501,7 @@ function SettlementPanel({
           </select>
         </label>
         <label><span>Referencia pago</span><input value={reference} onChange={(event) => setReference(event.target.value)} disabled={pending} /></label>
-        <button type="button" disabled={pending || !settlementId} onClick={() => void run(() => payMemberSettlement({ settlementId, idempotencyKey: makeIdempotencyKey(), paidDate, liquidityLocation, bankAccountId: liquidityLocation === 'bank' ? bankAccountId : null, reference }))}>Registrar pago</button>
+        <button type="button" disabled={pending || !settlementId} onClick={() => void paySettlement()}>Registrar pago</button>
       </div>
     </section>
   );
@@ -1415,6 +1524,7 @@ function ProfitDistributionPanel({
 }) {
   const [cutDate, setCutDate] = useState('2026-10-06');
   const [policyVersion, setPolicyVersion] = useState('TEST-C');
+  const [policyDescription, setPolicyDescription] = useState('Politica ficticia aprobada para pruebas locales');
   const [costs, setCosts] = useState('10.000');
   const [committedYield, setCommittedYield] = useState('20.000');
   const [reserve, setReserve] = useState('15.000');
@@ -1425,18 +1535,6 @@ function ProfitDistributionPanel({
   const [bankAccountId, setBankAccountId] = useState('');
   const [reference, setReference] = useState('pago utilidad ficticio');
   const [pending, setPending] = useState(false);
-
-  async function run(action: () => Promise<unknown>) {
-    setPending(true);
-    try {
-      await action();
-      await onSaved();
-    } catch (error) {
-      onError(error);
-    } finally {
-      setPending(false);
-    }
-  }
 
   async function runPreview() {
     setPending(true);
@@ -1456,17 +1554,70 @@ function ProfitDistributionPanel({
     }
   }
 
+  async function approvePolicy() {
+    setPending(true);
+    try {
+      await createLoanProfitDistributionPolicy({ cycleId: cycle.id, policyVersion, description: policyDescription });
+      await onSaved();
+    } catch (error) {
+      onError(error);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function confirmDistribution() {
+    if (!preview) return;
+    const payload = {
+      cycleId: cycle.id,
+      cutDate,
+      policyVersion,
+      costsAmount: toDatabaseMoney(parseCop(costs, 'costos')),
+      committedYieldAmount: toDatabaseMoney(parseCop(committedYield, 'rendimiento comprometido')),
+      reserveAmount: toDatabaseMoney(parseCop(reserve, 'reserva')),
+      previewHash: preview.preview_hash
+    };
+    await runPendingFinancialAction({
+      scope: `profit:confirm:${cycle.id}:${policyVersion}`,
+      payload,
+      setPending,
+      onSaved,
+      onError,
+      action: (idempotencyKey) => confirmLoanProfitDistribution({ ...payload, idempotencyKey })
+    });
+  }
+
+  async function payDistribution() {
+    const payload = {
+      distributionId,
+      paidDate,
+      liquidityLocation,
+      bankAccountId: liquidityLocation === 'bank' ? bankAccountId : null,
+      reference
+    };
+    await runPendingFinancialAction({
+      scope: `profit:pay:${distributionId}`,
+      payload,
+      setPending,
+      onSaved,
+      onError,
+      action: (idempotencyKey) => payLoanProfitDistribution({ ...payload, idempotencyKey })
+    });
+  }
+
   return (
     <section className="panel">
       <h2>Utilidad neta</h2>
       <div className="form-grid">
         <label><span>Corte</span><input type="date" value={cutDate} onChange={(event) => setCutDate(event.target.value)} disabled={pending} /></label>
         <label><span>Politica</span><input value={policyVersion} onChange={(event) => setPolicyVersion(event.target.value)} disabled={pending} /></label>
+        <label><span>Descripcion politica</span><input value={policyDescription} onChange={(event) => setPolicyDescription(event.target.value)} disabled={pending} /></label>
         <label><span>Costos</span><input value={costs} onChange={(event) => setCosts(event.target.value)} disabled={pending} /></label>
         <label><span>Rendimiento comprometido</span><input value={committedYield} onChange={(event) => setCommittedYield(event.target.value)} disabled={pending} /></label>
         <label><span>Reserva</span><input value={reserve} onChange={(event) => setReserve(event.target.value)} disabled={pending} /></label>
+        <button type="button" disabled={pending || !policyVersion || !policyDescription} onClick={() => void approvePolicy()}>Aprobar politica</button>
         <button type="button" disabled={pending} onClick={() => void runPreview()}>Previsualizar</button>
-        <button type="button" disabled={pending || !preview} onClick={() => void run(() => confirmLoanProfitDistribution({ cycleId: cycle.id, idempotencyKey: makeIdempotencyKey(), cutDate, policyVersion, costsAmount: toDatabaseMoney(parseCop(costs, 'costos')), committedYieldAmount: toDatabaseMoney(parseCop(committedYield, 'rendimiento comprometido')), reserveAmount: toDatabaseMoney(parseCop(reserve, 'reserva')), previewHash: preview?.preview_hash ?? '' }))}>Confirmar</button>
+        <button type="button" disabled={pending || !preview} onClick={() => void confirmDistribution()}>Confirmar</button>
       </div>
       {preview ? (
         <dl className="definition-grid">
@@ -1474,6 +1625,8 @@ function ProfitDistributionPanel({
           <dt>Distribuible</dt><dd>{formatCop(preview.distributable)}</dd>
           <dt>Elegibles</dt><dd>{preview.eligible_count}</dd>
           <dt>Por socio</dt><dd>{formatCop(preview.per_member)}</dd>
+          <dt>Residual</dt><dd>{formatCop(preview.rounding_residual)}</dd>
+          <dt>Politica aprobada</dt><dd>{preview.policy_approved ? 'Si' : 'No'}</dd>
           <dt>Liquidez</dt><dd>{formatCop(preview.liquidity_available)}</dd>
           <dt>Deficit</dt><dd>{formatCop(preview.liquidity_deficit)}</dd>
         </dl>
@@ -1502,7 +1655,7 @@ function ProfitDistributionPanel({
           </select>
         </label>
         <label><span>Referencia pago</span><input value={reference} onChange={(event) => setReference(event.target.value)} disabled={pending} /></label>
-        <button type="button" disabled={pending || !distributionId} onClick={() => void run(() => payLoanProfitDistribution({ distributionId, idempotencyKey: makeIdempotencyKey(), paidDate, liquidityLocation, bankAccountId: liquidityLocation === 'bank' ? bankAccountId : null, reference }))}>Registrar pago</button>
+        <button type="button" disabled={pending || !distributionId} onClick={() => void payDistribution()}>Registrar pago</button>
       </div>
       <div className="mini-list">
         {payments.slice(0, 3).map((payment) => <p key={payment.id}>Pago utilidad {formatCop(payment.amount)} / {payment.paid_date} / {payment.reference}</p>)}

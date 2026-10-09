@@ -73,3 +73,13 @@ Motivo: convertir acuerdos puntuales en regla global o asignar destinos sin evid
 Decision: confirmar liquidacion/reparto crea obligaciones y snapshots; el pago efectivo se registra despues contra banco o efectivo con referencia y control de liquidez.
 
 Motivo: una obligacion confirmada no debe disminuir dinero liquido hasta que exista pago real, y un reintento no debe pagar dos veces.
+
+## 2026-10-09 - Cierre de invariantes ABC
+
+Hecho: la revision ABC reprodujo fallos de hash nulo, cobros posteriores usados en cortes historicos, idempotencia validada despues de estados mutados, reversos que dejaban entidades desincronizadas, sobreasignacion de centavos y politicas libres de reparto.
+
+Decision: agregar migracion incremental correctiva y pruebas de regresion. Las RPC resuelven idempotencia antes de validar estado/saldo cambiado por su propio commit; hashes nulos se rechazan; la deuda al corte usa operaciones fechadas y reversos efectivos; liquidaciones retroactivas con cobros posteriores se bloquean; pagos de liquidacion/reparto reversados reabren obligaciones; desembolsos con cobros/compensaciones no se reversan genericamente; una apertura bancaria es unica y la financiacion posterior usa tipo separado; el reparto exige politica aprobada y conserva residual de centavos no negativo.
+
+Motivo: A+B+C no pueden avanzar a importacion D ni uso operativo si los invariantes financieros aceptan estados contradictorios o reintentos no deterministas.
+
+Limite: no se importaron datos reales, no se desplego y no se marco ninguna HU como `DONE`.
