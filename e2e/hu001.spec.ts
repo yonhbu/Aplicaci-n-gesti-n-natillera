@@ -73,7 +73,9 @@ test('OTP, socio, aporte, prestamo, polla, recarga y usuario sin membresia', asy
   await loanField('Tasa %').fill('5');
   await loanField('Plazo meses').fill('1');
   await loanField('Fecha desembolso').fill('2026-09-06');
-  await loansPanel.getByRole('button', { name: 'Crear y desembolsar' }).click();
+  await loansPanel.getByRole('button', { name: 'Crear contrato' }).click();
+  await expect(page.getByText('Operacion de prestamo confirmada.')).toBeVisible();
+  await loansPanel.locator('p').filter({ hasText: new RegExp(`${escapeRegExp(memberName)}.*draft`) }).getByRole('button', { name: 'Desembolsar' }).click();
   await expect(page.getByText('Operacion de prestamo confirmada.')).toBeVisible();
   await expect(loansPanel.getByText(new RegExp(`${escapeRegExp(memberName)}.*cartera.*500\\.000`))).toBeVisible();
 
@@ -96,10 +98,12 @@ test('OTP, socio, aporte, prestamo, polla, recarga y usuario sin membresia', asy
   await pollaField('Actividad').selectOption({ index: 1 });
   await pollaField('Participante / ganador').selectOption({ label: memberName });
   await pollaField('Aporte polla').fill('10.000');
+  await pollaField('Fecha aporte').fill('2026-10-06');
   await pollaPanel.getByRole('button', { name: 'Registrar aporte' }).click();
   await expect(page.getByText('Operacion de polla confirmada.')).toBeVisible();
 
   await pollaField('Premio bruto').fill('40.000');
+  await pollaField('Fecha premio').fill('2026-10-06');
   await pollaPanel.getByRole('button', { name: 'Asignar premio' }).click();
   await expect(pollaPanel.getByText(/neto.*35\.000/)).toBeVisible();
   await pollaPanel.getByRole('button', { name: 'Pagar neto' }).click();

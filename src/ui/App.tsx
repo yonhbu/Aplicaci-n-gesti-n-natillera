@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import Decimal from 'decimal.js';
 import { getCurrentSession, logout, requestOtp, verifyOtp } from '../data/auth';
-import { buildHu001Export } from '../data/export';
-import { listLedgerEntries } from '../data/finance';
-import { confirmLoanDisbursement, createLoanContract, listLoanPayments, listLoans, recordLoanPayment } from '../data/loans';
+import { buildNatilleraExport } from '../data/export';
+import { listFinancialOperations, listLedgerEntries } from '../data/finance';
+import { confirmLoanDisbursement, confirmLoanPrepayment, createLoanContract, listLoanPayments, listLoanSchedules, listLoans, quoteLoanPrepayment, recordLoanPayment, type LoanPrepaymentQuote } from '../data/loans';
 import { createCycleMember, listCycleMembers, updateCycleMember } from '../data/members';
-import { awardPollaPrize, createPollaActivity, listPollaActivities, listPollaPrizes, payPollaPrize, registerPollaContribution } from '../data/polla';
+import { awardPollaPrize, createPollaActivity, listPollaActivities, listPollaContributions, listPollaPrizes, payPollaPrize, registerPollaContribution } from '../data/polla';
 import { listSavingsContributions, registerContribution } from '../data/savings';
 import { fetchWorkspaceContext } from '../data/workspace';
 import { monthKey } from '../domain/date';
@@ -17,7 +17,7 @@ import type { ContributionMethod } from '../domain/savings';
 import { previewWithdrawal } from '../domain/withdrawal';
 import { clearPendingContribution, readPendingContribution, writePendingContribution } from '../lib/pendingContributionStorage';
 import { supabase } from '../lib/supabase';
-import type { Cycle, CycleMember, LedgerEntry, LoanContract, LoanPayment, PollaActivity, PollaPrize, SavingsContribution, Workspace } from '../lib/types';
+import type { Cycle, CycleMember, FinancialOperation, LedgerEntry, LoanContract, LoanPayment, LoanSchedule, PollaActivity, PollaContribution, PollaPrize, SavingsContribution, Workspace } from '../lib/types';
 import { userSafeError } from '../lib/userMessages';
 
 const months = [
@@ -48,10 +48,13 @@ export function App() {
   const [cycle, setCycle] = useState<Cycle | null>(null);
   const [cycleMembers, setCycleMembers] = useState<CycleMember[]>([]);
   const [contributions, setContributions] = useState<SavingsContribution[]>([]);
+  const [operations, setOperations] = useState<FinancialOperation[]>([]);
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
   const [loans, setLoans] = useState<LoanContract[]>([]);
   const [loanPayments, setLoanPayments] = useState<LoanPayment[]>([]);
+  const [loanSchedules, setLoanSchedules] = useState<LoanSchedule[]>([]);
   const [pollaActivities, setPollaActivities] = useState<PollaActivity[]>([]);
+  const [pollaContributions, setPollaContributions] = useState<PollaContribution[]>([]);
   const [pollaPrizes, setPollaPrizes] = useState<PollaPrize[]>([]);
   const [message, setMessage] = useState('');
 
@@ -69,19 +72,25 @@ export function App() {
       listCycleMembers(context.activeCycle.id),
       listSavingsContributions(context.activeCycle.id)
     ]);
-    const [ledgerData, loansData, loanPaymentsData, activitiesData, prizesData] = await Promise.all([
+    const [operationData, ledgerData, loansData, loanPaymentsData, loanScheduleData, activitiesData, pollaContributionData, prizesData] = await Promise.all([
+      listFinancialOperations(context.activeCycle.id),
       listLedgerEntries(context.activeCycle.id),
       listLoans(context.activeCycle.id),
       listLoanPayments(context.activeCycle.id),
+      listLoanSchedules(context.activeCycle.id),
       listPollaActivities(context.activeCycle.id),
+      listPollaContributions(context.activeCycle.id),
       listPollaPrizes(context.activeCycle.id)
     ]);
+    setOperations(operationData);
     setCycleMembers(membersData);
     setContributions(contributionData);
     setLedgerEntries(ledgerData);
     setLoans(loansData);
     setLoanPayments(loanPaymentsData);
+    setLoanSchedules(loanScheduleData);
     setPollaActivities(activitiesData);
+    setPollaContributions(pollaContributionData);
     setPollaPrizes(prizesData);
     setViewState('ready');
   }
@@ -168,10 +177,23 @@ export function App() {
             <h1>{cycle.name}</h1>
             <p>Ciclo {cycle.year}: {cycle.starts_on} a {cycle.closes_on}</p>
           </div>
-          <ExportButton workspace={workspace} cycle={cycle} cycleMembers={cycleMembers} contributions={contributions} />
+          <ExportButton
+            workspace={workspace}
+            cycle={cycle}
+            cycleMembers={cycleMembers}
+            contributions={contributions}
+            operations={operations}
+            ledgerEntries={ledgerEntries}
+            loans={loans}
+            loanPayments={loanPayments}
+            loanSchedules={loanSchedules}
+            pollaActivities={pollaActivities}
+            pollaContributions={pollaContributions}
+            pollaPrizes={pollaPrizes}
+          />
         </section>
         <SavingsSummary cycleMembers={cycleMembers} contributions={contributions} />
-        <FinanceSummary ledgerEntries={ledgerEntries} />
+        <FinanceSummary operations={operations} ledgerEntries={ledgerEntries} />
         <div className="columns">
           <MemberForm
             workspace={workspace}
@@ -197,6 +219,7 @@ export function App() {
             cycleMembers={cycleMembers}
             loans={loans}
             payments={loanPayments}
+            schedules={loanSchedules}
             onSaved={async () => {
               await refreshAll();
               setMessage('Operacion de prestamo confirmada.');
@@ -204,10 +227,10 @@ export function App() {
             onError={(error) => setMessage(userSafeError(error))}
           />
           <PollaPanel
-            workspace={workspace}
             cycle={cycle}
             cycleMembers={cycleMembers}
             activities={pollaActivities}
+            contributions={pollaContributions}
             prizes={pollaPrizes}
             onSaved={async () => {
               await refreshAll();
@@ -326,34 +349,70 @@ function SavingsSummary({ cycleMembers, contributions }: { cycleMembers: CycleMe
   );
 }
 
-function FinanceSummary({ ledgerEntries }: { ledgerEntries: LedgerEntry[] }) {
+function FinanceSummary({ operations, ledgerEntries }: { operations: FinancialOperation[]; ledgerEntries: LedgerEntry[] }) {
+  const [cutDate, setCutDate] = useState('2026-12-15');
   const balances = useMemo(() => {
+    const operationsById = new Map(operations.map((operation) => [operation.id, operation]));
     const byAccount = new Map<string, Decimal>();
     for (const entry of ledgerEntries) {
+      const operation = operationsById.get(entry.operation_id);
+      if (operation && operation.effective_date > cutDate) {
+        continue;
+      }
       byAccount.set(entry.account, (byAccount.get(entry.account) ?? new Decimal(0)).plus(entry.amount));
     }
     return byAccount;
-  }, [ledgerEntries]);
+  }, [cutDate, ledgerEntries, operations]);
+
+  const recentOperations = operations
+    .filter((operation) => operation.effective_date <= cutDate)
+    .slice(0, 8);
 
   return (
-    <section className="metrics">
-      <div>
-        <span>Caja reconstruida</span>
-        <strong>{formatCop(balances.get('cash') ?? 0)}</strong>
-      </div>
-      <div>
-        <span>Cartera</span>
-        <strong>{formatCop(balances.get('loans_receivable') ?? 0)}</strong>
-      </div>
-      <div>
-        <span>Fondo utilidad prestamos</span>
-        <strong>{formatCop(new Decimal(0).minus(balances.get('member_loan_profit_fund') ?? 0))}</strong>
-      </div>
-      <div>
-        <span>Administracion por pagar</span>
-        <strong>{formatCop(new Decimal(0).minus(balances.get('admin_payable') ?? 0))}</strong>
-      </div>
-    </section>
+    <>
+      <section className="metrics">
+        <div>
+          <span>Caja reconstruida</span>
+          <strong>{formatCop(balances.get('cash') ?? 0)}</strong>
+        </div>
+        <div>
+          <span>Cartera</span>
+          <strong>{formatCop(balances.get('loans_receivable') ?? 0)}</strong>
+        </div>
+        <div>
+          <span>Ahorro por pagar</span>
+          <strong>{formatCop(new Decimal(0).minus(balances.get('savings_liability') ?? 0))}</strong>
+        </div>
+        <div>
+          <span>Bolsa polla</span>
+          <strong>{formatCop(new Decimal(0).minus(balances.get('polla_pool') ?? 0))}</strong>
+        </div>
+        <div>
+          <span>Premios pendientes</span>
+          <strong>{formatCop(new Decimal(0).minus(balances.get('prizes_payable') ?? 0))}</strong>
+        </div>
+        <div>
+          <span>Fondo utilidad prestamos</span>
+          <strong>{formatCop(new Decimal(0).minus(balances.get('member_loan_profit_fund') ?? 0))}</strong>
+        </div>
+        <div>
+          <span>Administracion por pagar</span>
+          <strong>{formatCop(new Decimal(0).minus(balances.get('admin_payable') ?? 0))}</strong>
+        </div>
+      </section>
+      <section className="panel wide">
+        <h2>Movimientos financieros</h2>
+        <label>
+          Corte
+          <input type="date" value={cutDate} onChange={(event) => setCutDate(event.target.value)} />
+        </label>
+        <div className="mini-list">
+          {recentOperations.map((operation) => (
+            <p key={operation.id}>{operation.effective_date} / {operation.operation_type} / {operation.reference_table ?? 'sin referencia'}</p>
+          ))}
+        </div>
+      </section>
+    </>
   );
 }
 
@@ -650,6 +709,7 @@ function LoansPanel({
   cycleMembers,
   loans,
   payments,
+  schedules,
   onSaved,
   onError
 }: {
@@ -657,6 +717,7 @@ function LoansPanel({
   cycleMembers: CycleMember[];
   loans: LoanContract[];
   payments: LoanPayment[];
+  schedules: LoanSchedule[];
   onSaved: () => Promise<void>;
   onError: (error: unknown) => void;
 }) {
@@ -673,19 +734,23 @@ function LoansPanel({
   const [capitalAmount, setCapitalAmount] = useState('0');
   const [interestAmount, setInterestAmount] = useState('25.000');
   const [paymentDate, setPaymentDate] = useState('2026-10-06');
+  const [paymentKind, setPaymentKind] = useState<'regular' | 'prepayment'>('regular');
+  const [prepaymentQuote, setPrepaymentQuote] = useState<LoanPrepaymentQuote | null>(null);
   const [pending, setPending] = useState(false);
 
   const loanRows = loans.map((loan) => {
-    const paidCapital = payments.filter((payment) => payment.loan_id === loan.id).reduce((sum, payment) => sum.plus(payment.capital_amount), new Decimal(0));
-    const paidInterest = payments.filter((payment) => payment.loan_id === loan.id).reduce((sum, payment) => sum.plus(payment.interest_amount), new Decimal(0));
-    return { loan, pendingPrincipal: new Decimal(loan.principal).minus(paidCapital), paidInterest };
+    const postedPayments = payments.filter((payment) => payment.loan_id === loan.id && payment.status !== 'reversed');
+    const paidCapital = postedPayments.reduce((sum, payment) => sum.plus(payment.capital_amount), new Decimal(0));
+    const paidInterest = postedPayments.reduce((sum, payment) => sum.plus(payment.interest_amount), new Decimal(0));
+    const nextSchedule = schedules.find((schedule) => schedule.loan_id === loan.id && schedule.status === 'projected');
+    return { loan, pendingPrincipal: new Decimal(loan.principal).minus(paidCapital), paidInterest, nextSchedule };
   });
 
   async function submitLoan(event: React.FormEvent) {
     event.preventDefault();
     setPending(true);
     try {
-      const created = await createLoanContract({
+      await createLoanContract({
         cycleId: cycle.id,
         borrowerMemberId: borrowerMemberId || null,
         externalBorrowerName: borrowerMemberId ? null : externalName,
@@ -697,7 +762,18 @@ function LoansPanel({
         startDate,
         idempotencyKey: makeIdempotencyKey()
       });
-      await confirmLoanDisbursement(created.id, startDate, makeIdempotencyKey());
+      await onSaved();
+    } catch (error) {
+      onError(error);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function disburseLoan(loanId: string) {
+    setPending(true);
+    try {
+      await confirmLoanDisbursement(loanId, startDate, makeIdempotencyKey());
       await onSaved();
     } catch (error) {
       onError(error);
@@ -717,8 +793,43 @@ function LoansPanel({
         amount: toDatabaseMoney(parseCop(paymentAmount, 'pago')),
         capitalAmount: toDatabaseMoney(parseCop(capitalAmount, 'capital')),
         interestAmount: toDatabaseMoney(parseCop(interestAmount, 'interes')),
-        kind: new Decimal(capitalAmount.replaceAll('.', '').replace(',', '.')).gt(0) ? 'prepayment' : 'regular'
+        kind: paymentKind
       });
+      await onSaved();
+    } catch (error) {
+      onError(error);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function quotePrepayment() {
+    if (!selectedLoanId) {
+      return;
+    }
+    setPending(true);
+    try {
+      const quote = await quoteLoanPrepayment(selectedLoanId, paymentDate);
+      setPrepaymentQuote(quote);
+      setPaymentAmount(formatNumberForInput(quote.total_due));
+      setCapitalAmount(formatNumberForInput(quote.principal_due));
+      setInterestAmount(formatNumberForInput(quote.interest_due));
+      setPaymentKind('prepayment');
+    } catch (error) {
+      onError(error);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function submitQuotedPrepayment() {
+    if (!selectedLoanId) {
+      return;
+    }
+    setPending(true);
+    try {
+      await confirmLoanPrepayment(selectedLoanId, paymentDate, makeIdempotencyKey());
+      setPrepaymentQuote(null);
       await onSaved();
     } catch (error) {
       onError(error);
@@ -773,7 +884,7 @@ function LoansPanel({
           Fecha desembolso
           <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} disabled={pending} />
         </label>
-        <button type="submit" disabled={pending}>{pending ? 'Confirmando...' : 'Crear y desembolsar'}</button>
+        <button type="submit" disabled={pending}>{pending ? 'Guardando...' : 'Crear contrato'}</button>
       </form>
       <form onSubmit={submitPayment} className="form-grid compact-form">
         <label>
@@ -787,11 +898,27 @@ function LoansPanel({
         <label><span>Capital</span><input value={capitalAmount} onChange={(event) => setCapitalAmount(event.target.value)} disabled={pending} /></label>
         <label><span>Interes</span><input value={interestAmount} onChange={(event) => setInterestAmount(event.target.value)} disabled={pending} /></label>
         <label><span>Fecha cobro</span><input type="date" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} disabled={pending} /></label>
+        <label>
+          Tipo cobro
+          <select value={paymentKind} onChange={(event) => setPaymentKind(event.target.value as 'regular' | 'prepayment')} disabled={pending}>
+            <option value="regular">Regular</option>
+            <option value="prepayment">Prepago</option>
+          </select>
+        </label>
         <button type="submit" disabled={pending || !selectedLoanId}>Registrar cobro</button>
+        <button type="button" disabled={pending || !selectedLoanId} onClick={() => void quotePrepayment()}>Cotizar prepago</button>
+        <button type="button" disabled={pending || !selectedLoanId || !prepaymentQuote} onClick={() => void submitQuotedPrepayment()}>Confirmar prepago cotizado</button>
       </form>
+      {prepaymentQuote ? (
+        <p className="status">Cotizacion: capital {formatCop(prepaymentQuote.principal_due)}, interes {formatCop(prepaymentQuote.interest_due)}, total {formatCop(prepaymentQuote.total_due)}</p>
+      ) : null}
       <div className="mini-list">
-        {loanRows.map(({ loan, pendingPrincipal, paidInterest }) => (
-          <p key={loan.id}><strong>{loan.borrower?.display_name ?? loan.external_borrower_name}</strong>: {loan.status}, cartera {formatCop(pendingPrincipal)}, interes cobrado {formatCop(paidInterest)}</p>
+        {loanRows.map(({ loan, pendingPrincipal, paidInterest, nextSchedule }) => (
+          <p key={loan.id}>
+            <strong>{loan.borrower?.display_name ?? loan.external_borrower_name}</strong>: {loan.status}, cartera {formatCop(pendingPrincipal)}, interes cobrado {formatCop(paidInterest)}
+            {nextSchedule ? `, proximo ${nextSchedule.due_date} ${formatCop(new Decimal(nextSchedule.principal_due).plus(nextSchedule.interest_due))}` : ''}
+            {loan.status === 'draft' ? <button type="button" onClick={() => void disburseLoan(loan.id)} disabled={pending}>Desembolsar</button> : null}
+          </p>
         ))}
       </div>
     </section>
@@ -799,18 +926,18 @@ function LoansPanel({
 }
 
 function PollaPanel({
-  workspace,
   cycle,
   cycleMembers,
   activities,
+  contributions,
   prizes,
   onSaved,
   onError
 }: {
-  workspace: Workspace;
   cycle: Cycle;
   cycleMembers: CycleMember[];
   activities: PollaActivity[];
+  contributions: PollaContribution[];
   prizes: PollaPrize[];
   onSaved: () => Promise<void>;
   onError: (error: unknown) => void;
@@ -820,14 +947,17 @@ function PollaPanel({
   const [activityId, setActivityId] = useState('');
   const [cycleMemberId, setCycleMemberId] = useState('');
   const [pollaAmount, setPollaAmount] = useState('10.000');
+  const [pollaPaidDate, setPollaPaidDate] = useState('2026-10-06');
   const [prizeGross, setPrizeGross] = useState('40.000');
+  const [prizeAwardedAt, setPrizeAwardedAt] = useState('2026-10-06');
+  const [prizePaidDate, setPrizePaidDate] = useState('2026-10-06');
   const [pending, setPending] = useState(false);
 
   async function submitActivity(event: React.FormEvent) {
     event.preventDefault();
     setPending(true);
     try {
-      await createPollaActivity({ workspaceId: workspace.id, cycleId: cycle.id, year: cycle.year, month: activityMonth, name: activityName });
+      await createPollaActivity({ cycleId: cycle.id, year: cycle.year, month: activityMonth, name: activityName });
       await onSaved();
     } catch (error) {
       onError(error);
@@ -844,7 +974,7 @@ function PollaPanel({
         activityId,
         cycleMemberId,
         amount: toDatabaseMoney(parseCop(pollaAmount, 'aporte polla')),
-        paidDate: '2026-10-06',
+        paidDate: pollaPaidDate,
         idempotencyKey: makeIdempotencyKey()
       });
       await onSaved();
@@ -863,7 +993,7 @@ function PollaPanel({
         activityId,
         winnerCycleMemberId: cycleMemberId,
         grossAmount: toDatabaseMoney(parseCop(prizeGross, 'premio bruto')),
-        awardedAt: '2026-10-06',
+        awardedAt: prizeAwardedAt,
         idempotencyKey: makeIdempotencyKey()
       });
       await onSaved();
@@ -877,7 +1007,7 @@ function PollaPanel({
   async function payPrize(prizeId: string) {
     setPending(true);
     try {
-      await payPollaPrize(prizeId, '2026-10-06', makeIdempotencyKey());
+      await payPollaPrize(prizeId, prizePaidDate, makeIdempotencyKey());
       await onSaved();
     } catch (error) {
       onError(error);
@@ -910,13 +1040,28 @@ function PollaPanel({
           </select>
         </label>
         <label><span>Aporte polla</span><input value={pollaAmount} onChange={(event) => setPollaAmount(event.target.value)} disabled={pending} /></label>
+        <label><span>Fecha aporte</span><input type="date" value={pollaPaidDate} onChange={(event) => setPollaPaidDate(event.target.value)} disabled={pending} /></label>
         <button type="submit" disabled={pending || !activityId || !cycleMemberId}>Registrar aporte</button>
       </form>
       <form onSubmit={submitPrize} className="form-grid compact-form">
         <label><span>Premio bruto</span><input value={prizeGross} onChange={(event) => setPrizeGross(event.target.value)} disabled={pending} /></label>
+        <label><span>Fecha premio</span><input type="date" value={prizeAwardedAt} onChange={(event) => setPrizeAwardedAt(event.target.value)} disabled={pending} /></label>
         <button type="submit" disabled={pending || !activityId || !cycleMemberId}>Asignar premio</button>
       </form>
+      <label>
+        Fecha pago premio
+        <input type="date" value={prizePaidDate} onChange={(event) => setPrizePaidDate(event.target.value)} disabled={pending} />
+      </label>
       <div className="mini-list">
+        {contributions.map((contribution) => {
+          const member = cycleMembers.find((item) => item.id === contribution.cycle_member_id);
+          const activity = activities.find((item) => item.id === contribution.activity_id);
+          return (
+            <p key={contribution.id}>
+              Aporte {activity?.name ?? 'actividad'} / {member?.member?.display_name ?? 'participante'} / {formatCop(contribution.amount)} / {contribution.paid_date} / {contribution.status}
+            </p>
+          );
+        })}
         {prizes.map((prize) => (
           <p key={prize.id}>
             Premio {formatCop(prize.gross_amount)} / neto {formatCop(prize.net_amount)} / {prize.status}
@@ -1050,26 +1195,59 @@ function ExportButton({
   workspace,
   cycle,
   cycleMembers,
-  contributions
+  contributions,
+  operations,
+  ledgerEntries,
+  loans,
+  loanPayments,
+  loanSchedules,
+  pollaActivities,
+  pollaContributions,
+  pollaPrizes
 }: {
   workspace: Workspace;
   cycle: Cycle;
   cycleMembers: CycleMember[];
   contributions: SavingsContribution[];
+  operations: FinancialOperation[];
+  ledgerEntries: LedgerEntry[];
+  loans: LoanContract[];
+  loanPayments: LoanPayment[];
+  loanSchedules: LoanSchedule[];
+  pollaActivities: PollaActivity[];
+  pollaContributions: PollaContribution[];
+  pollaPrizes: PollaPrize[];
 }) {
   function exportData() {
     const blob = new Blob([
-      JSON.stringify(buildHu001Export({ workspace, cycle, cycleMembers, contributions }), null, 2)
+      JSON.stringify(buildNatilleraExport({
+        workspace,
+        cycle,
+        cycleMembers,
+        contributions,
+        operations,
+        ledgerEntries,
+        loans,
+        loanPayments,
+        loanSchedules,
+        pollaActivities,
+        pollaContributions,
+        pollaPrizes
+      }), null, 2)
     ], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'natillera-manager-hu001-export.json';
+    link.download = 'natillera-manager-ab-export.json';
     link.click();
     URL.revokeObjectURL(url);
   }
 
-  return <button type="button" onClick={exportData}>Exportar HU-001</button>;
+  return <button type="button" onClick={exportData}>Exportar A+B</button>;
+}
+
+function formatNumberForInput(value: Decimal.Value) {
+  return new Decimal(value).toDecimalPlaces(2).toFixed(2).replace('.', ',');
 }
 
 function MonthSelect({ label, value, onChange, disabled }: { label: string; value: number; onChange: (value: number) => void; disabled?: boolean }) {

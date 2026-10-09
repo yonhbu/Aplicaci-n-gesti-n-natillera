@@ -37,6 +37,7 @@ Implementado:
 - RLS por workspace para lectura y gestion permitida; escrituras monetarias directas quedan cerradas al cliente.
 - UI operativa para prestamos/cobros, resumen financiero reconstruido desde ledger, pollas y premios.
 - Reglas puras probadas para interes EA ACT/365F, 10/90 de interes cobrado, distribucion igualitaria base, cotizacion P013 y premio neto de polla.
+- Correccion B 2026-10-09: ahorro enlazado a ledger en transaccion, cronogramas amortizado/EA corregidos, cobros bloqueados para borradores/sobrecapital, idempotencia con payload canonico, ciclos cruzados rechazados en polla, fechas visibles de polla, prepago cotizado por servidor y exportacion A+B.
 
 Limites vigentes:
 
@@ -48,10 +49,10 @@ Limites vigentes:
 
 - `npm run check:secrets`: aprobado.
 - `npm run typecheck`: aprobado.
-- `npm run test`: 8 archivos, 26 pruebas aprobadas.
+- `npm run test`: 8 archivos, 27 pruebas aprobadas.
 - `npm run build`: aprobado.
 - `npm run test:infra:reset`: aprobado sobre `.supabase-test`.
-- `npm run test:rls`: 2 archivos SQL, 47 pruebas aprobadas.
+- `npm run test:rls`: 3 archivos SQL, 77 pruebas aprobadas.
 - `npm run test:e2e`: 2 pruebas aprobadas, proyectos `chromium` y `mobile`.
 - Servidor Vite local: responde en `http://127.0.0.1:5176`.
 - Rama local de Bloque B: `feature/block-b-hu002-hu003`.

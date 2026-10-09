@@ -9,6 +9,7 @@ export async function listLedgerEntries(cycleId: string): Promise<LedgerEntry[]>
       .select('*')
       .eq('cycle_id', cycleId)
       .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
       .range(from, to);
     if (error) throw new Error(error.message);
     return (data ?? []) as LedgerEntry[];
@@ -22,8 +23,25 @@ export async function listFinancialOperations(cycleId: string): Promise<Financia
       .select('*')
       .eq('cycle_id', cycleId)
       .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
       .range(from, to);
     if (error) throw new Error(error.message);
     return (data ?? []) as FinancialOperation[];
   });
+}
+
+export async function reverseFinancialOperation(input: {
+  operationId: string;
+  idempotencyKey: string;
+  effectiveDate: string;
+  reason: string;
+}): Promise<FinancialOperation> {
+  const { data, error } = await supabase.rpc('reverse_financial_operation', {
+    p_operation_id: input.operationId,
+    p_idempotency_key: input.idempotencyKey,
+    p_effective_date: input.effectiveDate,
+    p_reason: input.reason
+  });
+  if (error) throw new Error(error.message);
+  return data as FinancialOperation;
 }

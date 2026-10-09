@@ -85,16 +85,15 @@ select lives_ok(
 
 select is((select status from public.loan_contracts where idempotency_key = 'loan-create-001'), 'paid', 'prestamo queda pagado');
 
-insert into public.polla_activities (id, workspace_id, cycle_id, period_year, period_month, name)
-values ('51000000-0000-0000-0000-000000000001', '11000000-0000-0000-0000-000000000001', '21000000-0000-0000-0000-000000000001', 2026, 10, 'Polla B');
+select public.create_polla_activity('21000000-0000-0000-0000-000000000001', 2026, 10, 'Polla B');
 
 select lives_ok(
-  $$ select public.register_polla_contribution('51000000-0000-0000-0000-000000000001', '41000000-0000-0000-0000-000000000001', 'polla-contrib-001', 10000, '2026-10-06') $$,
+  $$ select public.register_polla_contribution((select id from public.polla_activities where name = 'Polla B'), '41000000-0000-0000-0000-000000000001', 'polla-contrib-001', 10000, '2026-10-06') $$,
   'aporte polla entra a bolsa separada'
 );
 
 select lives_ok(
-  $$ select public.award_polla_prize('51000000-0000-0000-0000-000000000001', '41000000-0000-0000-0000-000000000001', 'polla-prize-001', 40000, '2026-10-06') $$,
+  $$ select public.award_polla_prize((select id from public.polla_activities where name = 'Polla B'), '41000000-0000-0000-0000-000000000001', 'polla-prize-001', 40000, '2026-10-06') $$,
   'asigna premio con comision fija'
 );
 

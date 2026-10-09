@@ -45,3 +45,11 @@ Decision: usar `financial_operations` como cabecera idempotente y `ledger_entrie
 Motivo: una sola lista de caja no representa cartera, obligaciones, fondos y premios pendientes. El par operacion/partidas permite demostrar balance, idempotencia y trazabilidad sin sobredisenar el sistema.
 
 Limite: los reversos completos, banco real, conciliacion, liquidacion y reparto final quedan para HUs posteriores.
+
+## 2026-10-09 - Correccion de invariantes financieras de Bloque B
+
+Hecho: la revision de B reprodujo defectos en cronogramas, ahorro sin ledger, sobrecobros, idempotencia parcial y mezcla de ciclos.
+
+Decision: mantener el nucleo operacion/partidas y agregar una migracion incremental correctiva. Ahorro nuevo enlaza ledger en la misma transaccion; prestamos se crean como borrador y se desembolsan aparte; cobros bloquean estado/saldo bajo lock; polla se crea por RPC; y la idempotencia compara payload economico antes de cualquier efecto lateral.
+
+Motivo: corregir historia mediante migraciones nuevas preserva trazabilidad y evita ocultar defectos ya revisados.

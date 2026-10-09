@@ -68,7 +68,10 @@ export interface FinancialOperation {
   idempotency_key: string;
   operation_type: string;
   effective_date: string;
+  reference_table: string | null;
+  reference_id: string | null;
   payload: Record<string, unknown>;
+  reverses_operation_id: string | null;
   created_at: string;
 }
 
@@ -95,8 +98,21 @@ export interface LoanContract {
   term_months: number;
   start_date: string;
   status: 'draft' | 'active' | 'paid' | 'cancelled';
+  scheduled_payment: string | null;
+  prepayment_first_month_interest: string | null;
+  cancelled_at: string | null;
   disbursed_operation_id: string | null;
   borrower?: Member | null;
+}
+
+export interface LoanSchedule {
+  id: string;
+  loan_id: string;
+  installment_number: number;
+  due_date: string;
+  principal_due: string;
+  interest_due: string;
+  status: 'projected' | 'paid' | 'cancelled';
 }
 
 export interface LoanPayment {
@@ -107,6 +123,7 @@ export interface LoanPayment {
   capital_amount: string;
   interest_amount: string;
   kind: 'regular' | 'prepayment';
+  status: 'posted' | 'reversed';
 }
 
 export interface PollaActivity {
@@ -117,6 +134,17 @@ export interface PollaActivity {
   period_month: number;
   name: string;
   status: 'open' | 'awarded' | 'closed';
+}
+
+export interface PollaContribution {
+  id: string;
+  workspace_id: string;
+  cycle_id: string;
+  activity_id: string;
+  cycle_member_id: string;
+  amount: string;
+  paid_date: string;
+  status: 'posted' | 'reversed';
 }
 
 export interface PollaPrize {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allocateCollectedInterest, calculateEaInterest, distributeLoanProfitEqually, quoteP013Prepayment } from './loanFinance';
+import { allocateCollectedInterest, buildLoanSchedule, calculateEaInterest, distributeLoanProfitEqually, quoteP013Prepayment } from './loanFinance';
 
 describe('loanFinance', () => {
   it('calcula 24% EA ACT/365F durante 30 dias', () => {
@@ -25,6 +25,21 @@ describe('loanFinance', () => {
     const allocation = allocateCollectedInterest(25_000);
     expect(allocation.admin.toFixed(2)).toBe('2500.00');
     expect(allocation.memberFund.toFixed(2)).toBe('22500.00');
+  });
+
+  it('construye cronograma amortizado con interes sobre saldo', () => {
+    const schedule = buildLoanSchedule({
+      principal: 500_000,
+      method: 'amortized',
+      rateUnit: 'MONTHLY_FIXED',
+      rateValue: 0.05,
+      termMonths: 3,
+      startDate: '2026-09-06'
+    });
+
+    expect(schedule.map((row) => row.interestDue.toFixed(2))).toEqual(['25000.00', '17069.79', '8743.06']);
+    expect(schedule.map((row) => row.principalDue.toFixed(2))).toEqual(['158604.28', '166534.49', '174861.23']);
+    expect(schedule.map((row) => row.totalDue.toFixed(2))).toEqual(['183604.28', '183604.28', '183604.29']);
   });
 
   it('distribuye igualitario entre elegibles y conserva N=0 pendiente', () => {

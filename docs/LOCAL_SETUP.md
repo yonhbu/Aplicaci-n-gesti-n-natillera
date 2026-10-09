@@ -66,7 +66,7 @@ Puertos TEST:
 | Supabase Studio | http://127.0.0.1:55423 |
 | Bandeja local OTP | http://127.0.0.1:55424 |
 
-El E2E de Bloque B crea datos ficticios: socio, aporte, prestamo fijo de $500.000 con interes mensual explicito, cobro de $25.000, actividad de polla, aporte, premio bruto de $40.000 y pago neto separado. No usa datos reales ni importa respaldos legacy.
+El E2E de Bloque B crea datos ficticios: socio, aporte, contrato de prestamo fijo de $500.000 con interes mensual explicito, desembolso separado, cobro de $25.000, actividad de polla, aporte con fecha visible, premio bruto de $40.000 y pago neto separado. No usa datos reales ni importa respaldos legacy.
 
 ## Prueba manual RPC idempotente
 

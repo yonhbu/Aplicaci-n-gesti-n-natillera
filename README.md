@@ -22,10 +22,10 @@ La HU-001 sigue en `READY_FOR_REVIEW`; las correcciones de revision no la convie
 ## Alcance Bloque B
 
 - Registro financiero central con operaciones y partidas balanceadas.
-- Contratos de prestamo para socios o deudores externos, desembolso por RPC y cobros con aplicacion explicita a capital/interes.
+- Contratos de prestamo para socios o deudores externos, desembolso separado por RPC y cobros con aplicacion explicita a capital/interes.
 - Separacion contable entre caja, cartera, fondo de utilidad de prestamos, administracion por pagar, bolsa de polla, premios por pagar y ahorro.
 - Actividades de polla por periodo, aportes identificados, premio bruto, comision fija y pago neto separado.
-- Reglas puras verificadas para interes EA ACT/365F, reparto 10/90 de intereses, distribucion igualitaria base y premio neto de polla.
+- Reglas verificadas para interes EA ACT/365F, cronograma amortizado, reparto 10/90 de intereses, distribucion igualitaria base, prepago y premio neto de polla.
 
 El Bloque B no acepta A como `DONE`, no despliega, no importa datos reales y no habilita liquidaciones, banco real, conciliacion productiva ni comprobantes privados.
 

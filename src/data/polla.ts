@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import type { PollaActivity, PollaPrize } from '../lib/types';
+import type { PollaActivity, PollaContribution, PollaPrize } from '../lib/types';
 import { fetchAllPages } from './pagination';
 
 export async function listPollaActivities(cycleId: string): Promise<PollaActivity[]> {
@@ -9,6 +9,7 @@ export async function listPollaActivities(cycleId: string): Promise<PollaActivit
       .select('*')
       .eq('cycle_id', cycleId)
       .order('period_month', { ascending: true })
+      .order('id', { ascending: true })
       .range(from, to);
     if (error) throw new Error(error.message);
     return (data ?? []) as PollaActivity[];
@@ -22,27 +23,41 @@ export async function listPollaPrizes(cycleId: string): Promise<PollaPrize[]> {
       .select('*')
       .eq('cycle_id', cycleId)
       .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
       .range(from, to);
     if (error) throw new Error(error.message);
     return (data ?? []) as PollaPrize[];
   });
 }
 
+export async function listPollaContributions(cycleId: string): Promise<PollaContribution[]> {
+  return fetchAllPages(async (from, to) => {
+    const { data, error } = await supabase
+      .from('polla_contributions')
+      .select('*')
+      .eq('cycle_id', cycleId)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, to);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as PollaContribution[];
+  });
+}
+
 export async function createPollaActivity(input: {
-  workspaceId: string;
   cycleId: string;
   year: number;
   month: number;
   name: string;
 }) {
-  const { error } = await supabase.from('polla_activities').insert({
-    workspace_id: input.workspaceId,
-    cycle_id: input.cycleId,
-    period_year: input.year,
-    period_month: input.month,
-    name: input.name
+  const { data, error } = await supabase.rpc('create_polla_activity', {
+    p_cycle_id: input.cycleId,
+    p_period_year: input.year,
+    p_period_month: input.month,
+    p_name: input.name
   });
   if (error) throw new Error(error.message);
+  return data as PollaActivity;
 }
 
 export async function registerPollaContribution(input: {

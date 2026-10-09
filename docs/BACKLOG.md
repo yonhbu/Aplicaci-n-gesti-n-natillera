@@ -4,13 +4,13 @@
 
 Registro financiero minimo, prestamos/contratos, cobros reales y caja. No duplicar aportes HU-001 como nueva caja sin transicion idempotente.
 
-Estado: `READY_FOR_REVIEW` en Bloque B. Pendiente de aceptacion de Juan, reversos operativos completos, conciliacion bancaria y validaciones finales de politica financiera para pasar a paquetes posteriores.
+Estado: `READY_FOR_REVIEW` en Bloque B corregido. Pendiente de aceptacion de Juan, pantalla operativa completa de reversos, conciliacion bancaria y validaciones finales de politica financiera para pasar a paquetes posteriores.
 
 ## NAT-HU-003
 
 Actividades de polla, participantes por mes, premios netos, comisiones y derechos de retirados.
 
-Estado: `READY_FOR_REVIEW` en Bloque B. Pendiente de aceptacion de Juan y de conciliacion/migracion legacy en paquete posterior.
+Estado: `READY_FOR_REVIEW` en Bloque B corregido. Pendiente de aceptacion de Juan y de conciliacion/migracion legacy en paquete posterior.
 
 ## NAT-HU-004
 
