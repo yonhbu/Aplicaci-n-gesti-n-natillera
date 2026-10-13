@@ -2,9 +2,11 @@
 
 Aplicacion privada para gestionar la base de Natillera con React, TypeScript, Vite y Supabase.
 
-Estado actual: `NAT-HU-001`, `NAT-HU-002`, `NAT-HU-003`, `NAT-HU-004` y `NAT-HU-005` en `READY_FOR_REVIEW`.
+Estado actual: `NAT-HU-001`, `NAT-HU-002`, `NAT-HU-003`, `NAT-HU-004`, `NAT-HU-005` y `NAT-HU-006` en `READY_FOR_REVIEW`.
 
-Correccion ABC 2026-10-09: se cerraron invariantes de hash de previsualizacion, cortes historicos, idempotencia de reintentos, reversos dependientes, politica aprobada de reparto y centavos residuales. Aun no hay importacion productiva, despliegue ni sustitucion operativa.
+Correccion ABC 2026-10-09: se cerraron invariantes de hash de previsualizacion, cortes historicos, idempotencia de reintentos, reversos dependientes, politica aprobada de reparto y centavos residuales.
+
+Carga legacy operativa 2026-10-10: por autorizacion explicita de Juan se cargo el JSON/CSV real 2026 en DEV local operativo, con hash SHA-256 verificado, RPC transaccional idempotente y verificacion directa de conteos/totales. La entrega queda en `READY_FOR_REVIEW`; no implica despliegue, cierre de ciclo, comprobantes privados ni aceptacion `DONE`.
 
 ## Alcance HU-001
 
@@ -42,6 +44,16 @@ El Bloque B no acepta A como `DONE`, no despliega, no importa datos reales y no 
 
 El Bloque C no despliega, no importa datos reales, no conecta APIs bancarias, no ejecuta transferencias externas y no habilita migracion completa legacy.
 
+## Alcance Bloque D
+
+- Dry-run de migracion con inventario por fuente, SHA-256, copia de trabajo local ignorada por Git, mapeos, incidencias y conciliacion.
+- Staging SQL para lotes, mapeos, incidencias, procedencia y exportes ABC+D con RLS de lectura por workspace.
+- Scripts `block-d:*` con guardas que se niegan a escribir fuera de TEST local `http://127.0.0.1:55421`.
+- Ensayo parcial aislado: solo publica socios y aportes verificables; prestamos, pagos booleanos, premios inciertos, politicas y comprobantes sin bytes quedan en staging/incidencias.
+- Exportacion `natillera-manager.abcd.v1` y restauracion verificada en destino vacio de archivos y workspace vacio dentro de TEST.
+
+El Bloque D no despliega, no cambia DEV operativo, no importa productivamente datos reales y no declara comprobantes migrados si faltan bytes.
+
 ## Comandos
 
 ```bash
@@ -57,6 +69,13 @@ npm run test:infra:start
 npm run test:infra:reset
 npm run test:rls
 npm run test:e2e
+npm run block-d:fixture
+npm run block-d:dry-run -- --json incoming/block-d/fixtures/migration-d-fixture.json --csv incoming/block-d/fixtures/migration-d-fixture.csv
+npm run block-d:stage -- --report incoming/block-d/reports/dry-run-<hash>.json
+npm run block-d:publish-trial -- --report incoming/block-d/reports/dry-run-<hash>.json --allow-partial
+npm run block-d:export -- --report incoming/block-d/reports/dry-run-<hash>.json
+npm run block-d:restore-check -- --export incoming/block-d/exports/natillera-abcd-<hash>.json --to-test-db
+npm run legacy:import-2026 -- --json <ruta-json-real-fuera-de-git> --csv <ruta-csv-real-fuera-de-git>
 ```
 
 ## Configuracion local
@@ -65,4 +84,4 @@ Copia `.env.example` a `.env.local` y ajusta valores locales. No uses correos re
 
 ## Seguridad
 
-El cliente no contiene claves elevadas. RLS limita lectura por workspace. Los aportes de ahorro, desembolsos, cobros de prestamos, aportes de polla, pagos de premios monetarios, movimientos bancarios, liquidaciones y repartos se escriben por RPC idempotentes con auditoria y partidas financieras en la misma transaccion.
+El cliente no contiene claves elevadas. RLS limita lectura por workspace. Los aportes de ahorro, desembolsos, cobros de prestamos, aportes de polla, pagos de premios monetarios, movimientos bancarios, liquidaciones y repartos se escriben por RPC idempotentes con auditoria y partidas financieras en la misma transaccion. Los scripts D usan credencial elevada solo en CLI local TEST, nunca en frontend ni exportaciones.

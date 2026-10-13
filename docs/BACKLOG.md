@@ -28,6 +28,8 @@ Estado: `READY_FOR_REVIEW` en Bloque C para registro bancario manual, conciliaci
 
 Migracion completa con JSON vigente, decisiones explicitas, comprobantes privados y conciliacion.
 
+Estado: `READY_FOR_REVIEW` en Bloque D y carga real local 2026. Se ejecuto importacion operativa autorizada del JSON/CSV real en DEV local, con ensayo TEST, hash, lote idempotente y verificacion de conteos/totales. Pendiente de revision de Juan, comprobantes privados si existen, validacion visual/operativa y decision explicita antes de despliegue o `DONE`.
+
 ## NAT-HU-007
 
 Archivo/cierre de ciclos conservando cartera y obligaciones.

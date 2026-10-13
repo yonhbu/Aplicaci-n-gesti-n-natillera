@@ -83,3 +83,23 @@ Decision: agregar migracion incremental correctiva y pruebas de regresion. Las R
 Motivo: A+B+C no pueden avanzar a importacion D ni uso operativo si los invariantes financieros aceptan estados contradictorios o reintentos no deterministas.
 
 Limite: no se importaron datos reales, no se desplego y no se marco ninguna HU como `DONE`.
+
+## 2026-10-09 - Bloque D solo en destino aislado
+
+Hecho: HU-006 requiere migracion, conciliacion y restauracion, pero no se recibio en este hilo un JSON vigente real ni bytes reales de comprobantes.
+
+Decision: implementar D como flujo de dry-run, staging, mapeo, incidencias, ensayo parcial aislado, exportacion ABC+D y restauracion verificable. Los scripts con credencial elevada se niegan a escribir fuera de TEST local `http://127.0.0.1:55421`; el frontend solo previsualiza y exporta, no importa con llaves elevadas.
+
+Motivo: publicar historia legacy incompleta como operaciones reales fabricaria saldos, fechas, cobros o derechos no sustentados. El ensayo debe demostrar idempotencia, conciliacion y restauracion antes de cualquier transicion operativa.
+
+Limite: D conserva campos/procedencia y puede publicar unidades verificables en TEST, pero no declara migracion productiva completa. Pagos booleanos, P013 sin evidencia, premios inciertos, politicas libres y comprobantes sin bytes quedan como incidencias o staging.
+
+## 2026-10-10 - Carga legacy operativa 2026 autorizada
+
+Hecho: Juan autorizo cargar el JSON real 2026 y el CSV real 2026 al destino operativo local actual, usando JSON como fuente primaria y CSV como control complementario.
+
+Decision: implementar una RPC `import_natillera_legacy_2026` ejecutable solo con service role local, con hash SHA-256 obligatorio, bloqueo transaccional, lote idempotente, mapeos de procedencia y controles de conteo/totales antes de escribir. La carga se ensayo primero en TEST descartable y despues se ejecuto en DEV local sin reset.
+
+Motivo: importar desde el navegador requeriria exponer o delegar privilegios elevados; la ruta CLI local mantiene la llave administrativa fuera del frontend y conserva atomicidad.
+
+Limite: las marcas booleanas de pagos de prestamos se conservaron como declaracion historica sin fechas de caja; no se inventaron cobros ni comprobantes. P013 es el unico acuerdo `P013_FIRST_MONTH`. Los premios quedan como pago historico no verificado. La entrega queda en `READY_FOR_REVIEW`, no `DONE`.

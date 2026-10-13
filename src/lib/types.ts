@@ -51,7 +51,7 @@ export interface SavingsContribution {
   applied_year: number;
   applied_month: number;
   method: 'cash' | 'bank_transfer' | 'bank_deposit' | 'other';
-  source: 'manual' | 'legacy_prevalidation';
+  source: 'manual' | 'legacy_prevalidation' | 'legacy_migration_trial' | 'legacy_operational_import';
   actor_user_id: string;
   created_at: string;
 }
@@ -102,8 +102,14 @@ export interface LoanContract {
   status: 'draft' | 'active' | 'paid' | 'cancelled';
   scheduled_payment: string | null;
   prepayment_first_month_interest: string | null;
+  settlement_agreement_code: 'P013_FIRST_MONTH' | null;
   cancelled_at: string | null;
   disbursed_operation_id: string | null;
+  legacy_id: string | null;
+  legacy_note: string | null;
+  legacy_paid_capital_amount: string;
+  legacy_paid_interest_amount: string;
+  legacy_payment_state: 'none' | 'declared_paid_without_cash_dates';
   borrower?: Member | null;
 }
 
@@ -115,6 +121,8 @@ export interface LoanSchedule {
   principal_due: string;
   interest_due: string;
   status: 'projected' | 'paid' | 'cancelled';
+  legacy_source_key: string | null;
+  legacy_declared_paid: boolean;
 }
 
 export interface LoanPayment {
@@ -143,10 +151,13 @@ export interface PollaContribution {
   workspace_id: string;
   cycle_id: string;
   activity_id: string;
-  cycle_member_id: string;
+  cycle_member_id: string | null;
   amount: string;
   paid_date: string;
   status: 'posted' | 'reversed';
+  legacy_id: string | null;
+  legacy_collective: boolean;
+  legacy_participant_label: string | null;
 }
 
 export interface PollaPrize {
@@ -159,7 +170,12 @@ export interface PollaPrize {
   admin_commission: string;
   net_amount: string;
   status: 'pending_payment' | 'paid' | 'settled' | 'reversed';
-  awarded_at: string;
+  awarded_at: string | null;
+  legacy_id: string | null;
+  legacy_month: number | null;
+  legacy_type: string | null;
+  legacy_game: string | null;
+  legacy_payment_status: 'historical_payment_unverified' | 'pending_payment' | 'paid_verified';
 }
 
 export interface BankAccount {
@@ -245,4 +261,30 @@ export interface LoanProfitDistributionPayment {
   bank_account_id: string | null;
   reference: string;
   status: 'posted' | 'reversed';
+}
+
+export interface LoanProfitDistributionPolicy {
+  id: string;
+  workspace_id: string;
+  cycle_id: string;
+  policy_version: string;
+  description: string;
+  approved: boolean;
+  created_by: string;
+  created_at: string;
+}
+
+export interface LoanProfitDistributionAllocation {
+  id: string;
+  workspace_id: string;
+  cycle_id: string;
+  distribution_id: string;
+  cycle_member_id: string;
+  member_id: string;
+  amount: string;
+  status: 'pending_payment' | 'paid' | 'reversed';
+  payment_id: string | null;
+  paid_at: string | null;
+  payment_reference: string | null;
+  created_at: string;
 }

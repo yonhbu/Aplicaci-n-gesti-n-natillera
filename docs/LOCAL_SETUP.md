@@ -68,6 +68,24 @@ Puertos TEST:
 
 El E2E de Bloque C crea datos ficticios: socio, aporte, contrato de prestamo fijo de $500.000 con interes mensual explicito, desembolso separado, cobro de $25.000, actividad de polla, aporte con fecha visible, premio bruto de $40.000 y pago neto separado. Tambien registra cuenta bancaria descriptiva, apertura ficticia, interes recibido, comision, traslado interno, conciliacion con diferencia y una liquidacion simple con pago. No usa datos reales ni importa respaldos legacy.
 
+## Ensayo Bloque D
+
+Usar solo TEST descartable. Los comandos D fuerzan `SUPABASE_ENV=test` para escrituras y se niegan a operar si la API no es `http://127.0.0.1:55421`.
+
+```bash
+npm run test:infra:start
+npm run test:infra:reset
+node scripts/bootstrap-test.mjs
+npm run block-d:fixture
+npm run block-d:dry-run -- --json incoming/block-d/fixtures/migration-d-fixture.json --csv incoming/block-d/fixtures/migration-d-fixture.csv
+npm run block-d:stage -- --report incoming/block-d/reports/dry-run-<hash>.json
+npm run block-d:publish-trial -- --report incoming/block-d/reports/dry-run-<hash>.json --allow-partial
+npm run block-d:export -- --report incoming/block-d/reports/dry-run-<hash>.json
+npm run block-d:restore-check -- --export incoming/block-d/exports/natillera-abcd-<hash>.json --to-test-db
+```
+
+`--allow-partial` solo publica unidades independientes verificables. Si el dry-run tiene bloqueantes, el lote queda `blocked` y no debe llamarse migracion completa.
+
 ## Recorrido manual C
 
 Usar solo con datos ficticios:
@@ -135,3 +153,23 @@ Para iPhone fisico no basta cambiar a `--host 0.0.0.0`: la URL de Supabase tambi
 Los respaldos se conservan fuera de Git. En esta maquina hay un manifiesto local ignorado por Git en `incoming/manifests/legacy-sources-2026-10-06.sha256.json`.
 
 Comprobantes originales: no hay carpeta/archivo de imagenes confirmada en las rutas entregadas. Las referencias del JSON no equivalen a los bytes de imagen.
+
+Bloque D conserva originales y copias de trabajo bajo `incoming/block-d/`, ignorado por Git. No guardar JSON vigente real, reportes nominativos ni comprobantes dentro del ZIP de codigo.
+
+## Carga real 2026 autorizada
+
+Usar solo con autorizacion explicita y despues de ensayo TEST. El script verifica hashes SHA-256 fijos, conteos y totales antes de llamar la RPC transaccional.
+
+```bash
+npm run test:infra:start
+npm run test:infra:reset
+node scripts/bootstrap-test.mjs
+$env:SUPABASE_ENV='test'; npm run legacy:import-2026 -- --json <ruta-json-real-fuera-de-git> --csv <ruta-csv-real-fuera-de-git>
+
+npm run dev:infra:start
+npm run dev:db:migrate
+npm run dev:bootstrap
+npm run legacy:import-2026 -- --json <ruta-json-real-fuera-de-git> --csv <ruta-csv-real-fuera-de-git>
+```
+
+No ejecutar `test:infra:reset` contra DEV. La carga real 2026 queda en `READY_FOR_REVIEW` hasta revision de Juan.

@@ -3,7 +3,9 @@ import type {
   BankAccount,
   BankReconciliation,
   LoanProfitDistribution,
+  LoanProfitDistributionAllocation,
   LoanProfitDistributionPayment,
+  LoanProfitDistributionPolicy,
   MemberSettlement,
   MemberSettlementPayment
 } from '../lib/types';
@@ -120,6 +122,32 @@ export async function listLoanProfitDistributionPayments(cycleId: string): Promi
       .range(from, to);
     if (error) throw new Error(error.message);
     return (data ?? []) as LoanProfitDistributionPayment[];
+  });
+}
+
+export async function listLoanProfitDistributionPolicies(cycleId: string): Promise<LoanProfitDistributionPolicy[]> {
+  return fetchAllPages(async (from, to) => {
+    const { data, error } = await supabase
+      .from('loan_profit_distribution_policies')
+      .select('*')
+      .eq('cycle_id', cycleId)
+      .order('created_at', { ascending: false })
+      .range(from, to);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as LoanProfitDistributionPolicy[];
+  });
+}
+
+export async function listLoanProfitDistributionAllocations(cycleId: string): Promise<LoanProfitDistributionAllocation[]> {
+  return fetchAllPages(async (from, to) => {
+    const { data, error } = await supabase
+      .from('loan_profit_distribution_allocations')
+      .select('*')
+      .eq('cycle_id', cycleId)
+      .order('created_at', { ascending: false })
+      .range(from, to);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as LoanProfitDistributionAllocation[];
   });
 }
 

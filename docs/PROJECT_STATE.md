@@ -68,6 +68,31 @@ Limites vigentes de C:
 - Reversos de liquidaciones/repartos con dependencias quedan bloqueados para flujo dedicado; no se borra historia.
 - No se implemento importacion D; solo queda preparado el criterio para inventario/ensayo posterior.
 
+## NAT-HU-006
+
+Estado: `READY_FOR_REVIEW`
+
+Implementado:
+
+- Dominio de migracion D para inventario JSON/CSV, mapeo, incidencias, conciliacion y precondiciones ABC.
+- Preservacion local de originales/copia de trabajo en `incoming/block-d/`, ignorado por Git, con SHA-256.
+- Migracion SQL `20261009000400_block_d_migration_staging.sql` con lotes, mapeos, incidencias, procedencia, exportes y RLS.
+- Scripts `block-d:fixture`, `block-d:dry-run`, `block-d:stage`, `block-d:publish-trial`, `block-d:export` y `block-d:restore-check`, con escritura permitida solo sobre TEST local.
+- UI de dry-run D en la seccion legacy y exportacion `natillera-manager.abcd.v1`.
+- Ensayo fixture en TEST: lote staged/blocked por incidencias, publicacion parcial explicita de 2 socios y 2 aportes verificables, 2 operaciones y 4 partidas balanceadas.
+- Restauracion verificada desde export ABC+D en destino vacio de archivos y workspace vacio dentro de TEST.
+- Carga real operativa 2026 autorizada el 2026-10-10: JSON y CSV con SHA-256 esperado, importados primero en TEST descartable y luego en DEV local operativo por RPC transaccional `import_natillera_legacy_2026`.
+- Datos cargados y verificados en DEV local: 11 socios, 107 aportes de ahorro por $15.400.000, 13 prestamos por $19.420.964, 84 filas de cronograma con 51 marcas legacy pagadas, 19 aportes de polla por $990.000, 4 multas por $20.000 y 8 premios brutos por $390.000.
+- Las marcas pagadas de prestamos legacy quedaron como declaracion historica sin fechas de caja: capital $8.985.108 e interes $1.498.052 reducen saldo legacy sin crear cobros ficticios.
+- P013 quedo como unico prestamo con acuerdo `P013_FIRST_MONTH`; los 8 premios quedan con pago historico no verificado.
+
+Limites vigentes de D:
+
+- No se recibieron bytes reales de comprobantes en este hilo.
+- No hay despliegue, cierre de ciclo ni aceptacion `DONE`.
+- Prestamos, pagos booleanos, premios inciertos, politicas de liquidacion/utilidad y comprobantes sin bytes no se publican automaticamente.
+- El segundo destino de restauracion usado es un workspace vacio dentro de la base TEST aislada, no una instancia productiva.
+
 ## Verificaciones ejecutadas
 
 - `npm run check:secrets`: aprobado.
@@ -75,9 +100,11 @@ Limites vigentes de C:
 - `npm run test`: aprobado tras correcciones ABC, 9 archivos y 31 pruebas.
 - `npm run build`: aprobado.
 - `npm run test:infra:reset`: aprobado sobre `.supabase-test`.
-- `npm run test:rls`: aprobado tras correcciones ABC con 5 archivos SQL, 144 pruebas.
+- `npm run test:rls`: aprobado tras Bloque D con 6 archivos SQL, 158 pruebas.
 - `npm run test:e2e`: 2 pruebas aprobadas, proyectos `chromium` y `mobile`.
 - Bloque C/ABC corregido: `npm run typecheck` aprobado; `npm run test` aprobado, 9 archivos y 31 pruebas; `npm run test:rls` aprobado, 5 archivos SQL y 144 pruebas; `PLAYWRIGHT_PORT=5177 npm run test:e2e` aprobado, 2 pruebas.
+- Bloque D: `npm run typecheck` aprobado; `npm run test` aprobado, 10 archivos y 34 pruebas; `npm run check:secrets` aprobado; `npm run build` aprobado; `npm run test:rls` aprobado, 6 archivos SQL y 158 pruebas; `PLAYWRIGHT_PORT=5177 npm run test:e2e` aprobado, 2 pruebas; `npm run block-d:dry-run` fixture aprobado; `npm run block-d:stage` fixture aprobado en TEST; `npm run block-d:publish-trial -- --allow-partial` aprobo con 2 socios/2 aportes; `npm run block-d:export` y `npm run block-d:restore-check -- --to-test-db` aprobados.
+- Carga real 2026: `npm run typecheck` aprobado; `npm run test:infra:reset` aplico migraciones `20261010000100_import_legacy_2026_operational.sql` y `20261010000200_fix_legacy_import_operation_types.sql`; `npm run legacy:import-2026` aprobado en TEST; reintento TEST devolvio el mismo lote; verificacion directa TEST aprobo conteos/totales; `npm run dev:db:migrate` aplico las migraciones en DEV sin reset; `npm run legacy:import-2026` aprobado en DEV; reintento DEV devolvio el mismo lote `c7c15e78-6865-494b-883d-dedacde22dc3`; verificacion directa DEV aprobo conteos/totales.
 - Servidor Vite local: responde en `http://127.0.0.1:5176`.
 - Rama local de Bloque B: `feature/block-b-hu002-hu003`.
 - Manifiesto SHA-256 local de fuentes entregadas: `incoming/manifests/legacy-sources-2026-10-06.sha256.json`, ignorado por Git.

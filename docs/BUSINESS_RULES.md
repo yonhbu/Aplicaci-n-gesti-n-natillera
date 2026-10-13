@@ -88,9 +88,16 @@ HU-001 no confirma liquidaciones, no ejecuta transferencias y no reparte utilida
 
 ## Legacy
 
-- CSV y JSON legacy se inspeccionan, no se importan definitivamente.
+- CSV y JSON legacy se inspeccionan antes de cualquier importacion definitiva.
+- Excepcion autorizada 2026-10-10: el JSON real 2026 y el CSV real 2026 se cargaron en DEV local operativo por RPC transaccional idempotente, despues de validar SHA-256, conteos, totales y ensayo TEST. Esta excepcion no habilita otras importaciones sin autorizacion y conciliacion explicitas.
+- Bloque D permite dry-run y ensayo aislado; la carga real 2026 queda en `READY_FOR_REVIEW` y no convierte el sistema en despliegue productivo ni reemplazo operativo aceptado.
 - El CSV no es respaldo completo.
 - Las marcas booleanas de pagos no prueban fecha real de cobro.
+- En la carga real 2026, las marcas booleanas de cronograma pagado se conservaron como `declared_paid_without_cash_dates`: reducen capital/interes legacy para no recobrar, pero no fabrican movimientos de caja ni fechas de cobro.
 - Referencias a comprobantes no contienen imagenes.
 - Datos inciertos se reportan para revision; no se rellenan con cero ni fechas inventadas.
 - Inventario CSV y JSON se reporta por fuente. No se suman fuentes como si fueran operaciones nuevas sin conciliacion.
+- El JSON vigente debe conservarse original, con SHA-256 y copia de trabajo separada; su nombre no prueba vigencia.
+- Staging conserva campos legacy no mapeados y procedencia protegida; eso no equivale a dato utilizable en la app.
+- Un ensayo D solo publica unidades verificables e independientes. Prestamos, pagos booleanos, premios agregados, politicas libres y comprobantes sin bytes quedan como incidencias o staging.
+- La restauracion debe compararse contra export ABC+D; un archivo que solo parsea no demuestra recuperacion.

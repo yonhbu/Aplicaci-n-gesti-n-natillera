@@ -23,7 +23,14 @@
     "test:infra:start": "node scripts/test-supabase.mjs start && node scripts/write-test-env.mjs",
     "test:infra:reset": "node scripts/test-supabase.mjs reset && node scripts/write-test-env.mjs",
     "test:infra:stop": "node scripts/test-supabase.mjs stop",
-    "test:rls": "node scripts/test-supabase.mjs rls"
+    "test:rls": "node scripts/test-supabase.mjs rls",
+    "block-d:fixture": "tsx scripts/block-d-trial.ts fixture",
+    "block-d:dry-run": "tsx scripts/block-d-trial.ts dry-run",
+    "block-d:stage": "tsx scripts/block-d-trial.ts stage",
+    "block-d:publish-trial": "tsx scripts/block-d-trial.ts publish-trial",
+    "block-d:export": "tsx scripts/block-d-trial.ts export",
+    "block-d:restore-check": "tsx scripts/block-d-trial.ts restore-check",
+    "legacy:import-2026": "tsx scripts/import-legacy-2026.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.87.1",
