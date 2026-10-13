@@ -10,7 +10,9 @@ import {
   createLoanProfitDistributionPolicy,
   listBankAccounts,
   listBankReconciliations,
+  listLoanProfitDistributionAllocations,
   listLoanProfitDistributionPayments,
+  listLoanProfitDistributionPolicies,
   listLoanProfitDistributions,
   listMemberSettlementPayments,
   listMemberSettlements,
@@ -23,12 +25,11 @@ import {
   recordBankInterest,
   recordBankOpening,
   recordLiquidityTransfer,
-  setLoanSettlementAgreement,
   type LiquidityLocation,
   type ProfitDistributionPreview,
   type SettlementPreview
 } from '../data/blockC';
-import { buildNatilleraExport } from '../data/export';
+import { buildBlockDExport } from '../data/export';
 import { listFinancialOperations, listLedgerEntries } from '../data/finance';
 import { confirmLoanDisbursement, confirmLoanPrepayment, createLoanContract, listLoanPayments, listLoanSchedules, listLoans, quoteLoanPrepayment, recordLoanPayment, type LoanPrepaymentQuote } from '../data/loans';
 import { createCycleMember, listCycleMembers, updateCycleMember } from '../data/members';
@@ -37,6 +38,7 @@ import { listSavingsContributions, registerContribution } from '../data/savings'
 import { fetchWorkspaceContext } from '../data/workspace';
 import { monthKey } from '../domain/date';
 import { prevalidateLegacySources, type LegacyPrevalidationReport } from '../domain/legacyPrevalidation';
+import { buildMigrationDryRun, type MigrationDryRunReport } from '../domain/migrationD';
 import { formatCop, parseCop, toDatabaseMoney } from '../domain/money';
 import { buildPendingContributionOperation, type PendingContributionOperation } from '../domain/pendingContribution';
 import type { ContributionMethod } from '../domain/savings';
@@ -44,7 +46,7 @@ import { previewWithdrawal } from '../domain/withdrawal';
 import { clearPendingContribution, readPendingContribution, writePendingContribution } from '../lib/pendingContributionStorage';
 import { clearPendingFinancialOperation, getOrCreatePendingFinancialOperation, writePendingFinancialOperation, type PendingFinancialOperation } from '../lib/pendingFinancialOperationStorage';
 import { supabase } from '../lib/supabase';
-import type { BankAccount, BankReconciliation, Cycle, CycleMember, FinancialOperation, LedgerEntry, LoanContract, LoanPayment, LoanProfitDistribution, LoanProfitDistributionPayment, LoanSchedule, MemberSettlement, MemberSettlementPayment, PollaActivity, PollaContribution, PollaPrize, SavingsContribution, Workspace } from '../lib/types';
+import type { BankAccount, BankReconciliation, Cycle, CycleMember, FinancialOperation, LedgerEntry, LoanContract, LoanPayment, LoanProfitDistribution, LoanProfitDistributionAllocation, LoanProfitDistributionPayment, LoanProfitDistributionPolicy, LoanSchedule, MemberSettlement, MemberSettlementPayment, PollaActivity, PollaContribution, PollaPrize, SavingsContribution, Workspace } from '../lib/types';
 import { userSafeError } from '../lib/userMessages';
 
 const months = [
@@ -63,9 +65,32 @@ const months = [
 ];
 
 type ViewState = 'loading' | 'anonymous' | 'ready' | 'no-access' | 'error';
+type AppSectionId = 'home' | 'savings' | 'loans' | 'polla' | 'more';
+type MoreSectionId = 'bank' | 'movements' | 'settlements' | 'profit' | 'exports' | 'migration';
+
+const appSections: { id: AppSectionId; label: string }[] = [
+  { id: 'home', label: 'Inicio' },
+  { id: 'savings', label: 'Ahorros' },
+  { id: 'loans', label: 'Prestamos' },
+  { id: 'polla', label: 'Polla' },
+  { id: 'more', label: 'Mas' }
+];
+
+const moreSections: { id: MoreSectionId; label: string }[] = [
+  { id: 'bank', label: 'Banco y caja' },
+  { id: 'movements', label: 'Movimientos' },
+  { id: 'settlements', label: 'Liquidaciones' },
+  { id: 'profit', label: 'Utilidad' },
+  { id: 'exports', label: 'Respaldos' },
+  { id: 'migration', label: 'Migracion' }
+];
 
 function makeIdempotencyKey() {
   return `ui-${crypto.randomUUID()}`;
+}
+
+function todayCivilDate() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function isAmbiguousOperationError(error: unknown) {
@@ -100,6 +125,13 @@ async function runPendingFinancialAction(input: {
   }
 }
 
+function readNavigationHash(): { section: AppSectionId; moreSection: MoreSectionId } {
+  const [sectionValue, moreValue] = window.location.hash.replace(/^#\/?/, '').split('/');
+  const section = appSections.some((item) => item.id === sectionValue) ? sectionValue as AppSectionId : 'home';
+  const moreSection = moreSections.some((item) => item.id === moreValue) ? moreValue as MoreSectionId : 'bank';
+  return { section, moreSection };
+}
+
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [viewState, setViewState] = useState<ViewState>('loading');
@@ -121,7 +153,28 @@ export function App() {
   const [memberSettlementPayments, setMemberSettlementPayments] = useState<MemberSettlementPayment[]>([]);
   const [loanProfitDistributions, setLoanProfitDistributions] = useState<LoanProfitDistribution[]>([]);
   const [loanProfitDistributionPayments, setLoanProfitDistributionPayments] = useState<LoanProfitDistributionPayment[]>([]);
+  const [loanProfitDistributionPolicies, setLoanProfitDistributionPolicies] = useState<LoanProfitDistributionPolicy[]>([]);
+  const [loanProfitDistributionAllocations, setLoanProfitDistributionAllocations] = useState<LoanProfitDistributionAllocation[]>([]);
+  const initialNavigation = readNavigationHash();
+  const [activeSection, setActiveSectionState] = useState<AppSectionId>(initialNavigation.section);
+  const [activeMoreSection, setActiveMoreSectionState] = useState<MoreSectionId>(initialNavigation.moreSection);
+  const [legacyPrevalidationReport, setLegacyPrevalidationReport] = useState<LegacyPrevalidationReport | null>(null);
+  const [migrationDryRunReport, setMigrationDryRunReport] = useState<MigrationDryRunReport | null>(null);
   const [message, setMessage] = useState('');
+
+  function navigate(section: AppSectionId, moreSection = activeMoreSection) {
+    setActiveSectionState(section);
+    if (section === 'more') {
+      setActiveMoreSectionState(moreSection);
+    }
+    window.location.hash = section === 'more' ? `/${section}/${moreSection}` : `/${section}`;
+  }
+
+  function navigateMore(section: MoreSectionId) {
+    setActiveMoreSectionState(section);
+    setActiveSectionState('more');
+    window.location.hash = `/more/${section}`;
+  }
 
   async function refreshAll() {
     const context = await fetchWorkspaceContext();
@@ -136,6 +189,8 @@ export function App() {
       setMemberSettlementPayments([]);
       setLoanProfitDistributions([]);
       setLoanProfitDistributionPayments([]);
+      setLoanProfitDistributionPolicies([]);
+      setLoanProfitDistributionAllocations([]);
       setViewState('no-access');
       return;
     }
@@ -143,7 +198,7 @@ export function App() {
       listCycleMembers(context.activeCycle.id),
       listSavingsContributions(context.activeCycle.id)
     ]);
-    const [operationData, ledgerData, loansData, loanPaymentsData, loanScheduleData, activitiesData, pollaContributionData, prizesData, bankAccountData, reconciliationData, settlementData, settlementPaymentData, distributionData, distributionPaymentData] = await Promise.all([
+    const [operationData, ledgerData, loansData, loanPaymentsData, loanScheduleData, activitiesData, pollaContributionData, prizesData, bankAccountData, reconciliationData, settlementData, settlementPaymentData, distributionData, distributionPaymentData, policyData, allocationData] = await Promise.all([
       listFinancialOperations(context.activeCycle.id),
       listLedgerEntries(context.activeCycle.id),
       listLoans(context.activeCycle.id),
@@ -157,7 +212,9 @@ export function App() {
       listMemberSettlements(context.activeCycle.id),
       listMemberSettlementPayments(context.activeCycle.id),
       listLoanProfitDistributions(context.activeCycle.id),
-      listLoanProfitDistributionPayments(context.activeCycle.id)
+      listLoanProfitDistributionPayments(context.activeCycle.id),
+      listLoanProfitDistributionPolicies(context.activeCycle.id),
+      listLoanProfitDistributionAllocations(context.activeCycle.id)
     ]);
     setOperations(operationData);
     setCycleMembers(membersData);
@@ -175,6 +232,8 @@ export function App() {
     setMemberSettlementPayments(settlementPaymentData);
     setLoanProfitDistributions(distributionData);
     setLoanProfitDistributionPayments(distributionPaymentData);
+    setLoanProfitDistributionPolicies(policyData);
+    setLoanProfitDistributionAllocations(allocationData);
     setViewState('ready');
   }
 
@@ -221,6 +280,16 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    function syncFromHash() {
+      const next = readNavigationHash();
+      setActiveSectionState(next.section);
+      setActiveMoreSectionState(next.moreSection);
+    }
+    window.addEventListener('hashchange', syncFromHash);
+    return () => window.removeEventListener('hashchange', syncFromHash);
+  }, []);
+
   if (viewState === 'loading') {
     return <Shell><p className="status">Cargando sesion...</p></Shell>;
   }
@@ -251,121 +320,175 @@ export function App() {
 
   return (
     <Shell>
+      <NavigationStyles />
       <TopBar email={session.user.email ?? ''} onLogout={() => logout().then(() => setSession(null))} />
-      {message ? <p className="notice">{message}</p> : null}
-      <main className="layout">
+      {message ? <p className="notice" role="status" aria-live="polite">{message}</p> : null}
+      <SectionTabs activeSection={activeSection} onChange={(section) => navigate(section)} />
+      <main id="contenido" className="layout">
         <section className="hero">
           <div>
             <p className="eyebrow">{workspace.name}</p>
             <h1>{cycle.name}</h1>
             <p>Ciclo {cycle.year}: {cycle.starts_on} a {cycle.closes_on}</p>
           </div>
-          <ExportButton
-            workspace={workspace}
-            cycle={cycle}
-            cycleMembers={cycleMembers}
-            contributions={contributions}
-            operations={operations}
-            ledgerEntries={ledgerEntries}
-            loans={loans}
-            loanPayments={loanPayments}
-            loanSchedules={loanSchedules}
-            pollaActivities={pollaActivities}
-            pollaContributions={pollaContributions}
-            pollaPrizes={pollaPrizes}
-            bankAccounts={bankAccounts}
-            bankReconciliations={bankReconciliations}
-            memberSettlements={memberSettlements}
-            memberSettlementPayments={memberSettlementPayments}
-            loanProfitDistributions={loanProfitDistributions}
-            loanProfitDistributionPayments={loanProfitDistributionPayments}
-          />
+          <button type="button" onClick={() => navigate('more', 'exports')}>Respaldos</button>
         </section>
-        <SavingsSummary cycleMembers={cycleMembers} contributions={contributions} />
-        <FinanceSummary operations={operations} ledgerEntries={ledgerEntries} />
-        <BankPanel
-          cycle={cycle}
-          bankAccounts={bankAccounts}
-          reconciliations={bankReconciliations}
-          ledgerEntries={ledgerEntries}
-          operations={operations}
-          onSaved={async () => {
-            await refreshAll();
-            setMessage('Operacion bancaria confirmada.');
-          }}
-          onError={(error) => setMessage(userSafeError(error))}
-        />
-        <div className="columns">
-          <MemberForm
-            workspace={workspace}
-            cycle={cycle}
-            cycleMembers={cycleMembers}
-            onSaved={async () => {
-              await refreshAll();
-              setMessage('Socio guardado.');
-            }}
-            onError={(error) => setMessage(userSafeError(error))}
-          />
-          <ContributionForm
-            cycle={cycle}
-            cycleMembers={cycleMembers}
-            onSaved={handleContributionSaved}
-            onError={(error) => setMessage(userSafeError(error))}
-          />
-        </div>
-        <MembersTable cycleMembers={cycleMembers} contributions={contributions} />
-        <div className="columns">
-          <LoansPanel
-            cycle={cycle}
-            cycleMembers={cycleMembers}
-            loans={loans}
-            payments={loanPayments}
-            schedules={loanSchedules}
-            onSaved={async () => {
-              await refreshAll();
-              setMessage('Operacion de prestamo confirmada.');
-            }}
-            onError={(error) => setMessage(userSafeError(error))}
-          />
-          <PollaPanel
-            cycle={cycle}
-            cycleMembers={cycleMembers}
-            activities={pollaActivities}
-            contributions={pollaContributions}
-            prizes={pollaPrizes}
-            onSaved={async () => {
-              await refreshAll();
-              setMessage('Operacion de polla confirmada.');
-            }}
-            onError={(error) => setMessage(userSafeError(error))}
-          />
-        </div>
-        <div className="columns">
-          <SettlementPanel
-            cycleMembers={cycleMembers}
-            bankAccounts={bankAccounts}
-            settlements={memberSettlements}
-            onSaved={async () => {
-              await refreshAll();
-              setMessage('Liquidacion actualizada.');
-            }}
-            onError={(error) => setMessage(userSafeError(error))}
-          />
-          <ProfitDistributionPanel
-            cycle={cycle}
-            bankAccounts={bankAccounts}
-            distributions={loanProfitDistributions}
-            payments={loanProfitDistributionPayments}
-            onSaved={async () => {
-              await refreshAll();
-              setMessage('Utilidad actualizada.');
-            }}
-            onError={(error) => setMessage(userSafeError(error))}
-          />
-        </div>
-        <WithdrawalPreviewPanel />
-        <LegacyPanel />
-        <FutureModules />
+
+        {activeSection === 'home' ? (
+          <div className="section-view">
+            <HomeActionsPanel
+              cycleMembers={cycleMembers}
+              migrationReport={migrationDryRunReport}
+              onSavings={() => navigate('savings')}
+              onLoans={() => navigate('loans')}
+              onMigration={() => navigate('more', 'migration')}
+            />
+            <SavingsSummary cycleMembers={cycleMembers} contributions={contributions} />
+            <FinanceSummary operations={operations} ledgerEntries={ledgerEntries} />
+          </div>
+        ) : null}
+
+        {activeSection === 'savings' ? (
+          <div className="section-view">
+            <div className="columns">
+              <MemberForm
+                workspace={workspace}
+                cycle={cycle}
+                cycleMembers={cycleMembers}
+                onSaved={async () => {
+                  await refreshAll();
+                  setMessage('Socio guardado.');
+                }}
+                onError={(error) => setMessage(userSafeError(error))}
+              />
+              <ContributionForm
+                cycle={cycle}
+                cycleMembers={cycleMembers}
+                onSaved={handleContributionSaved}
+                onError={(error) => setMessage(userSafeError(error))}
+              />
+            </div>
+            <MembersTable cycleMembers={cycleMembers} contributions={contributions} />
+          </div>
+        ) : null}
+
+        {activeSection === 'loans' ? (
+          <div className="section-view">
+            <LoansPanel
+              cycle={cycle}
+              cycleMembers={cycleMembers}
+              loans={loans}
+              payments={loanPayments}
+              schedules={loanSchedules}
+              onSaved={async () => {
+                await refreshAll();
+                setMessage('Operacion de prestamo confirmada.');
+              }}
+              onError={(error) => setMessage(userSafeError(error))}
+            />
+          </div>
+        ) : null}
+
+        {activeSection === 'polla' ? (
+          <div className="section-view">
+            <PollaPanel
+              cycle={cycle}
+              cycleMembers={cycleMembers}
+              activities={pollaActivities}
+              contributions={pollaContributions}
+              prizes={pollaPrizes}
+              onSaved={async () => {
+                await refreshAll();
+                setMessage('Operacion de polla confirmada.');
+              }}
+              onError={(error) => setMessage(userSafeError(error))}
+            />
+          </div>
+        ) : null}
+
+        {activeSection === 'more' ? (
+          <div className="section-view">
+            <MoreTabs activeSection={activeMoreSection} onChange={navigateMore} />
+            {activeMoreSection === 'bank' ? (
+              <BankPanel
+                cycle={cycle}
+                bankAccounts={bankAccounts}
+                reconciliations={bankReconciliations}
+                ledgerEntries={ledgerEntries}
+                operations={operations}
+                onSaved={async () => {
+                  await refreshAll();
+                  setMessage('Operacion bancaria confirmada.');
+                }}
+                onError={(error) => setMessage(userSafeError(error))}
+              />
+            ) : null}
+            {activeMoreSection === 'movements' ? (
+              <MovementsPanel operations={operations} ledgerEntries={ledgerEntries} />
+            ) : null}
+            {activeMoreSection === 'settlements' ? (
+              <SettlementPanel
+                cycleMembers={cycleMembers}
+                bankAccounts={bankAccounts}
+                settlements={memberSettlements}
+                onSaved={async () => {
+                  await refreshAll();
+                  setMessage('Liquidacion actualizada.');
+                }}
+                onError={(error) => setMessage(userSafeError(error))}
+              />
+            ) : null}
+            {activeMoreSection === 'profit' ? (
+              <ProfitDistributionPanel
+                cycle={cycle}
+                bankAccounts={bankAccounts}
+                distributions={loanProfitDistributions}
+                payments={loanProfitDistributionPayments}
+                onSaved={async () => {
+                  await refreshAll();
+                  setMessage('Utilidad actualizada.');
+                }}
+                onError={(error) => setMessage(userSafeError(error))}
+              />
+            ) : null}
+            {activeMoreSection === 'exports' ? (
+              <ExportsPanel
+                workspace={workspace}
+                cycle={cycle}
+                cycleMembers={cycleMembers}
+                contributions={contributions}
+                operations={operations}
+                ledgerEntries={ledgerEntries}
+                loans={loans}
+                loanPayments={loanPayments}
+                loanSchedules={loanSchedules}
+                pollaActivities={pollaActivities}
+                pollaContributions={pollaContributions}
+                pollaPrizes={pollaPrizes}
+                bankAccounts={bankAccounts}
+                bankReconciliations={bankReconciliations}
+                memberSettlements={memberSettlements}
+                memberSettlementPayments={memberSettlementPayments}
+                loanProfitDistributions={loanProfitDistributions}
+                loanProfitDistributionPayments={loanProfitDistributionPayments}
+                loanProfitDistributionPolicies={loanProfitDistributionPolicies}
+                loanProfitDistributionAllocations={loanProfitDistributionAllocations}
+                migrationDryRun={migrationDryRunReport}
+              />
+            ) : null}
+            {activeMoreSection === 'migration' ? (
+              <>
+                <LegacyPanel
+                  report={legacyPrevalidationReport}
+                  migrationReport={migrationDryRunReport}
+                  onReport={setLegacyPrevalidationReport}
+                  onMigrationReport={setMigrationDryRunReport}
+                />
+                <FutureModules />
+              </>
+            ) : null}
+          </div>
+        ) : null}
       </main>
     </Shell>
   );
@@ -374,6 +497,7 @@ export function App() {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#contenido">Saltar al contenido</a>
       {children}
     </div>
   );
@@ -388,6 +512,207 @@ function TopBar({ email, onLogout }: { email: string; onLogout: () => void }) {
         <button type="button" onClick={onLogout}>Salir</button>
       </div>
     </header>
+  );
+}
+
+function NavigationStyles() {
+  return (
+    <style>
+      {`
+        .section-tabs {
+          background: #f6f8f5;
+          border-bottom: 1px solid #d9e2d5;
+          box-shadow: 0 8px 24px rgba(23, 32, 38, 0.12);
+          display: flex;
+          gap: 8px;
+          isolation: isolate;
+          left: 0;
+          overflow-x: auto;
+          padding: 8px clamp(12px, 4vw, 48px);
+          position: sticky;
+          right: 0;
+          scrollbar-width: thin;
+          transform: translateZ(0);
+          top: 0;
+          z-index: 2147483000;
+        }
+
+        .section-tab {
+          background: #ffffff;
+          border: 1px solid #cbd5c6;
+          color: #14532d;
+          flex: 0 0 auto;
+          font-weight: 700;
+          min-height: 44px;
+          position: relative;
+          scroll-margin-top: calc(var(--primary-nav-height) + 16px);
+          touch-action: manipulation;
+          white-space: nowrap;
+          z-index: 2147483001;
+        }
+
+        .section-tab[aria-current="page"] {
+          background: #14532d;
+          border-color: #14532d;
+          color: #ffffff;
+        }
+
+        .more-tabs {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .more-tab {
+          background: #ffffff;
+          border: 1px solid #cbd5c6;
+          color: #14532d;
+          min-height: 38px;
+        }
+
+        .more-tab[aria-current="page"] {
+          background: #14532d;
+          border-color: #14532d;
+          color: #ffffff;
+        }
+
+        .section-view {
+          display: grid;
+          gap: 18px;
+        }
+
+        .home-cut-panel {
+          align-items: end;
+          display: grid;
+          gap: 12px;
+          grid-template-columns: minmax(0, 1fr) minmax(180px, 260px);
+        }
+
+        .home-cut-panel h2 {
+          margin: 0;
+        }
+
+        .quick-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+        }
+
+        .export-status {
+          margin: 10px 0 0;
+        }
+
+        .summary-list {
+          display: grid;
+          gap: 8px;
+          margin: 0;
+        }
+
+        .summary-list div {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          border-bottom: 1px solid #d9e2d5;
+          padding-bottom: 8px;
+        }
+
+        @media (min-width: 980px) {
+          .layout {
+            padding-left: 280px;
+          }
+
+          .section-tabs {
+            align-content: start;
+            border-top: 0;
+            border-bottom: 0;
+            border-right: 1px solid #d9e2d5;
+            bottom: 0;
+            box-shadow: none;
+            flex-direction: column;
+            left: 0;
+            overflow-y: auto;
+            padding: 24px 16px;
+            position: fixed;
+            top: 59px;
+            width: 232px;
+            z-index: 2147483000;
+          }
+        }
+
+        @media (max-width: 979px) {
+          .layout {
+            padding-bottom: 48px;
+          }
+
+          .section-tabs {
+            justify-content: space-between;
+            min-height: var(--primary-nav-height);
+          }
+
+          .section-tab {
+            flex: 1 1 0;
+            font-size: clamp(0.72rem, 2.65vw, 0.86rem);
+            line-height: 1.15;
+            min-width: 0;
+            padding-left: 6px;
+            padding-right: 6px;
+            white-space: normal;
+          }
+
+          .home-cut-panel {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}
+    </style>
+  );
+}
+
+function SectionTabs({
+  activeSection,
+  onChange
+}: {
+  activeSection: AppSectionId;
+  onChange: (section: AppSectionId) => void;
+}) {
+  return (
+    <nav className="section-tabs" aria-label="Secciones principales">
+      {appSections.map((section) => (
+        <button
+          key={section.id}
+          type="button"
+          className="section-tab"
+          aria-current={section.id === activeSection ? 'page' : undefined}
+          onClick={() => onChange(section.id)}
+        >
+          {section.label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function MoreTabs({
+  activeSection,
+  onChange
+}: {
+  activeSection: MoreSectionId;
+  onChange: (section: MoreSectionId) => void;
+}) {
+  return (
+    <nav className="more-tabs" aria-label="Secciones de mas opciones">
+      {moreSections.map((section) => (
+        <button
+          key={section.id}
+          type="button"
+          className="more-tab"
+          aria-current={section.id === activeSection ? 'page' : undefined}
+          onClick={() => onChange(section.id)}
+        >
+          {section.label}
+        </button>
+      ))}
+    </nav>
   );
 }
 
@@ -435,9 +760,48 @@ function LoginPanel({ onAuthenticated }: { onAuthenticated: () => Promise<void> 
           ) : null}
           <button type="submit" disabled={pending}>{pending ? 'Procesando...' : sent ? 'Ingresar' : 'Enviar codigo'}</button>
         </form>
-        {error ? <p className="error">{error}</p> : null}
+        {error ? <p className="error" role="alert">{error}</p> : null}
       </section>
     </main>
+  );
+}
+
+function HomeActionsPanel({
+  cycleMembers,
+  migrationReport,
+  onSavings,
+  onLoans,
+  onMigration
+}: {
+  cycleMembers: CycleMember[];
+  migrationReport: MigrationDryRunReport | null;
+  onSavings: () => void;
+  onLoans: () => void;
+  onMigration: () => void;
+}) {
+  const decisionCount = migrationReport?.issues.filter((issue) => issue.category === 'requires_decision').length ?? 0;
+  const blockerCount = migrationReport?.issues.filter((issue) => issue.category === 'blocking').length ?? 0;
+
+  return (
+    <section className="panel">
+      <h2>Inicio</h2>
+      <p className="muted">
+        {cycleMembers.length === 0
+          ? 'La base operativa no tiene socios cargados en este ciclo. Un respaldo legacy prevalidado no equivale a importacion.'
+          : `Ciclo operativo con ${cycleMembers.length} socios visibles para este usuario.`}
+      </p>
+      {migrationReport ? (
+        <p className={blockerCount || decisionCount ? 'warning' : 'notice'}>
+          Migracion leida: {blockerCount} bloqueantes y {decisionCount} decisiones pendientes. El dry-run no publica datos operativos.
+        </p>
+      ) : null}
+      <div className="quick-actions">
+        <button type="button" onClick={onSavings}>Registrar aporte</button>
+        <button type="button" onClick={onLoans}>Registrar cobro</button>
+        <button type="button" onClick={onSavings}>Consultar socio</button>
+        <button type="button" onClick={onMigration}>Revisar migracion</button>
+      </div>
+    </section>
   );
 }
 
@@ -474,7 +838,7 @@ function SavingsSummary({ cycleMembers, contributions }: { cycleMembers: CycleMe
 }
 
 function FinanceSummary({ operations, ledgerEntries }: { operations: FinancialOperation[]; ledgerEntries: LedgerEntry[] }) {
-  const [cutDate, setCutDate] = useState('2026-12-15');
+  const [cutDate, setCutDate] = useState(todayCivilDate());
   const balances = useMemo(() => {
     const operationsById = new Map(operations.map((operation) => [operation.id, operation]));
     const byAccount = new Map<string, Decimal>();
@@ -488,12 +852,15 @@ function FinanceSummary({ operations, ledgerEntries }: { operations: FinancialOp
     return byAccount;
   }, [cutDate, ledgerEntries, operations]);
 
-  const recentOperations = operations
-    .filter((operation) => operation.effective_date <= cutDate)
-    .slice(0, 8);
-
   return (
     <>
+      <section className="panel home-cut-panel">
+        <h2>Resumen al corte</h2>
+        <label>
+          Corte
+          <input type="date" value={cutDate} onChange={(event) => setCutDate(event.target.value)} />
+        </label>
+      </section>
       <section className="metrics">
         <div>
           <span>Caja reconstruida</span>
@@ -524,19 +891,53 @@ function FinanceSummary({ operations, ledgerEntries }: { operations: FinancialOp
           <strong>{formatCop(new Decimal(0).minus(balances.get('admin_payable') ?? 0))}</strong>
         </div>
       </section>
-      <section className="panel wide">
-        <h2>Movimientos financieros</h2>
-        <label>
-          Corte
-          <input type="date" value={cutDate} onChange={(event) => setCutDate(event.target.value)} />
-        </label>
-        <div className="mini-list">
-          {recentOperations.map((operation) => (
-            <p key={operation.id}>{operation.effective_date} / {operation.operation_type} / {operation.reference_table ?? 'sin referencia'}</p>
-          ))}
-        </div>
-      </section>
     </>
+  );
+}
+
+function MovementsPanel({ operations, ledgerEntries }: { operations: FinancialOperation[]; ledgerEntries: LedgerEntry[] }) {
+  const [cutDate, setCutDate] = useState(todayCivilDate());
+  const operationsById = useMemo(() => new Map(operations.map((operation) => [operation.id, operation])), [operations]);
+  const visibleOperations = operations.filter((operation) => operation.effective_date <= cutDate);
+  const visibleEntries = ledgerEntries.filter((entry) => {
+    const operation = operationsById.get(entry.operation_id);
+    return !operation || operation.effective_date <= cutDate;
+  });
+
+  return (
+    <section className="panel wide">
+      <h2>Movimientos financieros</h2>
+      <label>
+        Corte
+        <input type="date" value={cutDate} onChange={(event) => setCutDate(event.target.value)} />
+      </label>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Tipo</th>
+              <th>Referencia</th>
+              <th>Partidas</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleOperations.map((operation) => {
+              const entries = visibleEntries.filter((entry) => entry.operation_id === operation.id);
+              return (
+                <tr key={operation.id}>
+                  <td>{operation.effective_date}</td>
+                  <td>{operation.operation_type}</td>
+                  <td>{operation.reference_table ?? 'Sin referencia'}</td>
+                  <td>{entries.map((entry) => `${entry.account}: ${formatCop(entry.amount)}`).join(' / ') || 'Sin partidas visibles'}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {visibleOperations.length === 0 ? <p className="muted">No hay movimientos publicados hasta el corte elegido.</p> : null}
+    </section>
   );
 }
 
@@ -557,7 +958,7 @@ function MemberForm({
   const editing = cycleMembers.find((item) => item.id === editingId);
   const [displayName, setDisplayName] = useState('');
   const [legacyId, setLegacyId] = useState('');
-  const [monthlyQuota, setMonthlyQuota] = useState('100.000');
+  const [monthlyQuota, setMonthlyQuota] = useState('');
   const [startMonth, setStartMonth] = useState(1);
   const [endMonth, setEndMonth] = useState(12);
   const [participatesInPolla, setParticipatesInPolla] = useState(false);
@@ -570,7 +971,7 @@ function MemberForm({
     if (!selected) {
       setDisplayName('');
       setLegacyId('');
-      setMonthlyQuota('100.000');
+      setMonthlyQuota('');
       setStartMonth(1);
       setEndMonth(12);
       setParticipatesInPolla(false);
@@ -678,9 +1079,9 @@ function ContributionForm({
   onError: (error: unknown) => void;
 }) {
   const [cycleMemberId, setCycleMemberId] = useState('');
-  const [amountText, setAmountText] = useState('100.000');
-  const [effectiveDate, setEffectiveDate] = useState('2026-09-23');
-  const [appliedMonth, setAppliedMonth] = useState(10);
+  const [amountText, setAmountText] = useState('');
+  const [effectiveDate, setEffectiveDate] = useState(todayCivilDate());
+  const [appliedMonth, setAppliedMonth] = useState(new Date().getMonth() + 1);
   const [method, setMethod] = useState<ContributionMethod>('bank_transfer');
   const [pendingOperation, setPendingOperation] = useState<PendingContributionOperation | null>(null);
   const [pending, setPending] = useState(false);
@@ -848,25 +1249,27 @@ function LoansPanel({
   const [borrowerMemberId, setBorrowerMemberId] = useState('');
   const [externalName, setExternalName] = useState('');
   const [referredByMemberId, setReferredByMemberId] = useState('');
-  const [principal, setPrincipal] = useState('500.000');
+  const [principal, setPrincipal] = useState('');
   const [method, setMethod] = useState('fixed_interest');
   const [rateUnit, setRateUnit] = useState('MONTHLY_FIXED');
-  const [rateValue, setRateValue] = useState('5');
+  const [rateValue, setRateValue] = useState('');
   const [termMonths, setTermMonths] = useState(1);
-  const [startDate, setStartDate] = useState('2026-09-06');
+  const [startDate, setStartDate] = useState(todayCivilDate());
   const [selectedLoanId, setSelectedLoanId] = useState('');
-  const [paymentAmount, setPaymentAmount] = useState('25.000');
-  const [capitalAmount, setCapitalAmount] = useState('0');
-  const [interestAmount, setInterestAmount] = useState('25.000');
-  const [paymentDate, setPaymentDate] = useState('2026-10-06');
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [capitalAmount, setCapitalAmount] = useState('');
+  const [interestAmount, setInterestAmount] = useState('');
+  const [paymentDate, setPaymentDate] = useState(todayCivilDate());
   const [paymentKind, setPaymentKind] = useState<'regular' | 'prepayment'>('regular');
   const [prepaymentQuote, setPrepaymentQuote] = useState<LoanPrepaymentQuote | null>(null);
   const [pending, setPending] = useState(false);
 
   const loanRows = loans.map((loan) => {
     const postedPayments = payments.filter((payment) => payment.loan_id === loan.id && payment.status !== 'reversed');
-    const paidCapital = postedPayments.reduce((sum, payment) => sum.plus(payment.capital_amount), new Decimal(0));
-    const paidInterest = postedPayments.reduce((sum, payment) => sum.plus(payment.interest_amount), new Decimal(0));
+    const legacyPaidCapital = new Decimal(loan.legacy_paid_capital_amount ?? 0);
+    const legacyPaidInterest = new Decimal(loan.legacy_paid_interest_amount ?? 0);
+    const paidCapital = postedPayments.reduce((sum, payment) => sum.plus(payment.capital_amount), legacyPaidCapital);
+    const paidInterest = postedPayments.reduce((sum, payment) => sum.plus(payment.interest_amount), legacyPaidInterest);
     const nextSchedule = schedules.find((schedule) => schedule.loan_id === loan.id && schedule.status === 'projected');
     return { loan, pendingPrincipal: new Decimal(loan.principal).minus(paidCapital), paidInterest, nextSchedule };
   });
@@ -982,21 +1385,6 @@ function LoansPanel({
     });
   }
 
-  async function markSelectedLoanP013() {
-    if (!selectedLoanId) {
-      return;
-    }
-    setPending(true);
-    try {
-      await setLoanSettlementAgreement(selectedLoanId, 'P013_FIRST_MONTH');
-      await onSaved();
-    } catch (error) {
-      onError(error);
-    } finally {
-      setPending(false);
-    }
-  }
-
   return (
     <section className="panel">
       <h2>Prestamos y cobros</h2>
@@ -1074,7 +1462,6 @@ function LoansPanel({
         <button type="submit" disabled={pending || !selectedLoanId}>Registrar cobro</button>
         <button type="button" disabled={pending || !selectedLoanId} onClick={() => void quotePrepayment()}>Cotizar prepago</button>
         <button type="button" disabled={pending || !selectedLoanId || !prepaymentQuote} onClick={() => void submitQuotedPrepayment()}>Confirmar prepago cotizado</button>
-        <button type="button" disabled={pending || !selectedLoanId} onClick={() => void markSelectedLoanP013()}>Marcar acuerdo P013</button>
       </form>
       {prepaymentQuote ? (
         <p className="status">Cotizacion: capital {formatCop(prepaymentQuote.principal_due)}, interes {formatCop(prepaymentQuote.interest_due)}, total {formatCop(prepaymentQuote.total_due)}</p>
@@ -1109,15 +1496,15 @@ function PollaPanel({
   onSaved: () => Promise<void>;
   onError: (error: unknown) => void;
 }) {
-  const [activityName, setActivityName] = useState('Polla prueba');
-  const [activityMonth, setActivityMonth] = useState(10);
+  const [activityName, setActivityName] = useState('');
+  const [activityMonth, setActivityMonth] = useState(new Date().getMonth() + 1);
   const [activityId, setActivityId] = useState('');
   const [cycleMemberId, setCycleMemberId] = useState('');
-  const [pollaAmount, setPollaAmount] = useState('10.000');
-  const [pollaPaidDate, setPollaPaidDate] = useState('2026-10-06');
-  const [prizeGross, setPrizeGross] = useState('40.000');
-  const [prizeAwardedAt, setPrizeAwardedAt] = useState('2026-10-06');
-  const [prizePaidDate, setPrizePaidDate] = useState('2026-10-06');
+  const [pollaAmount, setPollaAmount] = useState('');
+  const [pollaPaidDate, setPollaPaidDate] = useState(todayCivilDate());
+  const [prizeGross, setPrizeGross] = useState('');
+  const [prizeAwardedAt, setPrizeAwardedAt] = useState(todayCivilDate());
+  const [prizePaidDate, setPrizePaidDate] = useState(todayCivilDate());
   const [pending, setPending] = useState(false);
 
   async function submitActivity(event: React.FormEvent) {
@@ -1232,15 +1619,17 @@ function PollaPanel({
         {contributions.map((contribution) => {
           const member = cycleMembers.find((item) => item.id === contribution.cycle_member_id);
           const activity = activities.find((item) => item.id === contribution.activity_id);
+          const participantLabel = member?.member?.display_name ?? contribution.legacy_participant_label ?? 'participante legacy';
           return (
             <p key={contribution.id}>
-              Aporte {activity?.name ?? 'actividad'} / {member?.member?.display_name ?? 'participante'} / {formatCop(contribution.amount)} / {contribution.paid_date} / {contribution.status}
+              Aporte {activity?.name ?? 'actividad'} / {participantLabel} / {formatCop(contribution.amount)} / {contribution.paid_date} / {contribution.status}
             </p>
           );
         })}
         {prizes.map((prize) => (
           <p key={prize.id}>
             Premio {formatCop(prize.gross_amount)} / neto {formatCop(prize.net_amount)} / {prize.status}
+            {prize.legacy_payment_status === 'historical_payment_unverified' ? ' / pago historico no verificado' : ''}
             {prize.status === 'pending_payment' ? <button type="button" onClick={() => void payPrize(prize.id)} disabled={pending}>Pagar neto</button> : null}
           </p>
         ))}
@@ -1266,16 +1655,16 @@ function BankPanel({
   onSaved: () => Promise<void>;
   onError: (error: unknown) => void;
 }) {
-  const [displayName, setDisplayName] = useState('Banco ficticio');
+  const [displayName, setDisplayName] = useState('');
   const [institutionName, setInstitutionName] = useState('');
-  const [maskedIdentifier, setMaskedIdentifier] = useState('****1234');
+  const [maskedIdentifier, setMaskedIdentifier] = useState('');
   const [bankAccountId, setBankAccountId] = useState('');
-  const [effectiveDate, setEffectiveDate] = useState('2026-10-06');
-  const [amount, setAmount] = useState('1.000.000');
-  const [reference, setReference] = useState('referencia ficticia');
-  const [interestGross, setInterestGross] = useState('10.000');
-  const [feeAmount, setFeeAmount] = useState('1.000');
-  const [externalBalance, setExternalBalance] = useState('908.500');
+  const [effectiveDate, setEffectiveDate] = useState(todayCivilDate());
+  const [amount, setAmount] = useState('');
+  const [reference, setReference] = useState('');
+  const [interestGross, setInterestGross] = useState('');
+  const [feeAmount, setFeeAmount] = useState('');
+  const [externalBalance, setExternalBalance] = useState('');
   const [pending, setPending] = useState(false);
 
   const balances = useMemo(() => {
@@ -1378,16 +1767,16 @@ function SettlementPanel({
   onError: (error: unknown) => void;
 }) {
   const [cycleMemberId, setCycleMemberId] = useState('');
-  const [cutDate, setCutDate] = useState('2026-10-06');
-  const [annualFee, setAnnualFee] = useState('20.000');
-  const [penalty, setPenalty] = useState('50.000');
+  const [cutDate, setCutDate] = useState(todayCivilDate());
+  const [annualFee, setAnnualFee] = useState('');
+  const [penalty, setPenalty] = useState('');
   const [otherDiscounts, setOtherDiscounts] = useState('0');
   const [preview, setPreview] = useState<SettlementPreview | null>(null);
   const [settlementId, setSettlementId] = useState('');
-  const [paidDate, setPaidDate] = useState('2026-10-08');
+  const [paidDate, setPaidDate] = useState(todayCivilDate());
   const [liquidityLocation, setLiquidityLocation] = useState<LiquidityLocation>('bank');
   const [bankAccountId, setBankAccountId] = useState('');
-  const [reference, setReference] = useState('transferencia ficticia');
+  const [reference, setReference] = useState('');
   const [pending, setPending] = useState(false);
 
   async function previewSettlement() {
@@ -1522,18 +1911,18 @@ function ProfitDistributionPanel({
   onSaved: () => Promise<void>;
   onError: (error: unknown) => void;
 }) {
-  const [cutDate, setCutDate] = useState('2026-10-06');
-  const [policyVersion, setPolicyVersion] = useState('TEST-C');
-  const [policyDescription, setPolicyDescription] = useState('Politica ficticia aprobada para pruebas locales');
-  const [costs, setCosts] = useState('10.000');
-  const [committedYield, setCommittedYield] = useState('20.000');
-  const [reserve, setReserve] = useState('15.000');
+  const [cutDate, setCutDate] = useState(todayCivilDate());
+  const [policyVersion, setPolicyVersion] = useState('');
+  const [policyDescription, setPolicyDescription] = useState('');
+  const [costs, setCosts] = useState('0');
+  const [committedYield, setCommittedYield] = useState('0');
+  const [reserve, setReserve] = useState('0');
   const [preview, setPreview] = useState<ProfitDistributionPreview | null>(null);
   const [distributionId, setDistributionId] = useState('');
-  const [paidDate, setPaidDate] = useState('2026-10-08');
+  const [paidDate, setPaidDate] = useState(todayCivilDate());
   const [liquidityLocation, setLiquidityLocation] = useState<LiquidityLocation>('bank');
   const [bankAccountId, setBankAccountId] = useState('');
-  const [reference, setReference] = useState('pago utilidad ficticio');
+  const [reference, setReference] = useState('');
   const [pending, setPending] = useState(false);
 
   async function runPreview() {
@@ -1703,8 +2092,17 @@ function WithdrawalPreviewPanel() {
   );
 }
 
-function LegacyPanel() {
-  const [report, setReport] = useState<LegacyPrevalidationReport | null>(null);
+function LegacyPanel({
+  report,
+  migrationReport,
+  onReport,
+  onMigrationReport
+}: {
+  report: LegacyPrevalidationReport | null;
+  migrationReport: MigrationDryRunReport | null;
+  onReport: (report: LegacyPrevalidationReport | null) => void;
+  onMigrationReport: (report: MigrationDryRunReport | null) => void;
+}) {
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
   const [csvText, setCsvText] = useState('');
@@ -1718,12 +2116,21 @@ function LegacyPanel() {
     setter(await file.text());
   }
 
-  function run() {
+  async function run() {
     setPending(true);
     setError('');
     try {
-      setReport(prevalidateLegacySources({ csvText: csvText || undefined, jsonText: jsonText || undefined }));
+      const prevalidation = prevalidateLegacySources({ csvText: csvText || undefined, jsonText: jsonText || undefined });
+      const sourceHash = await sha256Browser([jsonText || '', csvText || ''].join('\n---CSV---\n'));
+      onReport(prevalidation);
+      onMigrationReport(buildMigrationDryRun({
+        csvText: csvText || undefined,
+        jsonText: jsonText || undefined,
+        sourceHash
+      }));
     } catch (caught) {
+      onReport(null);
+      onMigrationReport(null);
       setError(userSafeError(caught));
     } finally {
       setPending(false);
@@ -1731,21 +2138,20 @@ function LegacyPanel() {
   }
 
   function downloadReport() {
-    if (!report) {
+    if (!report && !migrationReport) {
       return;
     }
-    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'natillera-hu001-prevalidacion.json';
-    link.click();
-    URL.revokeObjectURL(url);
+    triggerDownload({
+      contents: JSON.stringify({ hu001Prevalidation: report, blockDDryRun: migrationReport }, null, 2),
+      mimeType: 'application/json;charset=utf-8',
+      fileName: `natillera-${fileTimestamp()}-dry-run-migracion.json`
+    });
   }
 
   return (
     <section className="panel wide">
-      <h2>Prevalidacion legacy</h2>
+      <h2>Migracion D: prevalidacion y dry-run</h2>
+      <p className="muted">Este modulo lee archivos legacy y genera evidencia local. No importa datos a la base operativa ni resuelve decisiones financieras.</p>
       <div className="file-grid">
         <label>
           CSV legacy
@@ -1757,32 +2163,61 @@ function LegacyPanel() {
         </label>
       </div>
       <div className="actions">
-        <button type="button" onClick={run} disabled={pending || (!csvText && !jsonText)}>{pending ? 'Validando...' : 'Validar fuentes'}</button>
-        <button type="button" onClick={downloadReport} disabled={!report}>Descargar reporte</button>
+        <button type="button" onClick={() => void run()} disabled={pending || (!csvText && !jsonText)}>{pending ? 'Validando...' : 'Prevalidar sin escrituras'}</button>
+        <button type="button" onClick={downloadReport} disabled={!report && !migrationReport}>Descargar dry-run D</button>
       </div>
       {error ? <p className="error">{error}</p> : null}
-      {report ? (
+      {report || migrationReport ? (
         <div className="report">
-          <pre>{JSON.stringify(report.inventory, null, 2)}</pre>
-          <ul>
-            {report.issues.map((issue, index) => <li key={`${issue.code}-${index}`}><strong>{issue.severity}</strong> {issue.code}: {issue.message}</li>)}
-          </ul>
+          {migrationReport ? (
+            <dl className="definition-grid">
+              <dt>Estado real</dt><dd>Archivo leido y dry-run generado; importacion operativa no ejecutada.</dd>
+              <dt>Fuentes</dt><dd>{migrationReport.inventory.sourceNames.join(', ') || 'Sin nombre fuente'}</dd>
+              <dt>Fecha mas reciente</dt><dd>{migrationReport.inventory.latestDateFound ?? 'No detectada'}</dd>
+            </dl>
+          ) : null}
+          {migrationReport ? (
+            <dl className="definition-grid">
+              <dt>Hash fuente</dt><dd>{migrationReport.inventory.sourceHash.slice(0, 16)}...</dd>
+              <dt>Mapeos</dt><dd>{migrationReport.mappings.length}</dd>
+              <dt>Bloqueantes</dt><dd>{migrationReport.issues.filter((issue) => issue.category === 'blocking').length}</dd>
+              <dt>Decisiones</dt><dd>{migrationReport.issues.filter((issue) => issue.category === 'requires_decision').length}</dd>
+            </dl>
+          ) : null}
+          <details>
+            <summary>Ver inventario tecnico</summary>
+            <pre>{JSON.stringify(migrationReport?.inventory ?? report?.inventory, null, 2)}</pre>
+          </details>
+          <details open>
+            <summary>Problemas y decisiones</summary>
+            <ul>
+              {(migrationReport?.issues ?? []).slice(0, 20).map((issue) => <li key={issue.id}><strong>{issue.category}</strong> {issue.code}: {issue.effect}</li>)}
+              {!migrationReport && report?.issues.map((issue, index) => <li key={`${issue.code}-${index}`}><strong>{issue.severity}</strong> {issue.code}: {issue.message}</li>)}
+            </ul>
+          </details>
         </div>
       ) : null}
     </section>
   );
 }
 
+async function sha256Browser(value: string) {
+  const buffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 function FutureModules() {
   return (
     <section className="panel wide muted">
       <h2>Modulos posteriores</h2>
-      <p>Importacion productiva, comprobantes privados, restauracion legacy, cierre de ciclos y despliegue quedan bloqueados para HUs posteriores. Esta version registra banco, conciliacion, liquidaciones y utilidad solo por operaciones trazables.</p>
+      <p>La importacion productiva, cierre de ciclo y despliegue siguen bloqueados. D agrega ensayo aislado, staging, conciliacion y restauracion verificable; los comprobantes privados solo cuentan como migrados si existen bytes y manifiesto recuperable.</p>
     </section>
   );
 }
 
-function ExportButton({
+type DownloadState = 'idle' | 'preparing' | 'success' | 'error';
+
+function ExportsPanel({
   workspace,
   cycle,
   cycleMembers,
@@ -1800,7 +2235,10 @@ function ExportButton({
   memberSettlements,
   memberSettlementPayments,
   loanProfitDistributions,
-  loanProfitDistributionPayments
+  loanProfitDistributionPayments,
+  loanProfitDistributionPolicies,
+  loanProfitDistributionAllocations,
+  migrationDryRun
 }: {
   workspace: Workspace;
   cycle: Cycle;
@@ -1820,39 +2258,187 @@ function ExportButton({
   memberSettlementPayments: MemberSettlementPayment[];
   loanProfitDistributions: LoanProfitDistribution[];
   loanProfitDistributionPayments: LoanProfitDistributionPayment[];
+  loanProfitDistributionPolicies: LoanProfitDistributionPolicy[];
+  loanProfitDistributionAllocations: LoanProfitDistributionAllocation[];
+  migrationDryRun: MigrationDryRunReport | null;
 }) {
-  function exportData() {
-    const blob = new Blob([
-      JSON.stringify(buildNatilleraExport({
-        workspace,
-        cycle,
-        cycleMembers,
-        contributions,
-        operations,
-        ledgerEntries,
-        loans,
-        loanPayments,
-        loanSchedules,
-        pollaActivities,
-        pollaContributions,
-        pollaPrizes,
-        bankAccounts,
-        bankReconciliations,
-        memberSettlements,
-        memberSettlementPayments,
-        loanProfitDistributions,
-        loanProfitDistributionPayments
-      }), null, 2)
-    ], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'natillera-manager-abc-export.json';
-    link.click();
-    URL.revokeObjectURL(url);
+  const [jsonState, setJsonState] = useState<DownloadState>('idle');
+  const [csvState, setCsvState] = useState<DownloadState>('idle');
+  const [migrationState, setMigrationState] = useState<DownloadState>('idle');
+  const [error, setError] = useState('');
+
+  const counts = {
+    socios: cycleMembers.length,
+    aportes: contributions.length,
+    operaciones: operations.length,
+    partidas: ledgerEntries.length,
+    prestamos: loans.length,
+    pagosPrestamo: loanPayments.length,
+    pollas: pollaActivities.length,
+    premios: pollaPrizes.length,
+    cuentasBanco: bankAccounts.length,
+    conciliaciones: bankReconciliations.length,
+    liquidaciones: memberSettlements.length,
+    repartos: loanProfitDistributions.length
+  };
+
+  async function runDownload(kind: 'json' | 'csv' | 'migration') {
+    const setState = kind === 'json' ? setJsonState : kind === 'csv' ? setCsvState : setMigrationState;
+    setState('preparing');
+    setError('');
+    try {
+      if (kind === 'json') {
+        const backup = buildBlockDExport({
+          workspace,
+          cycle,
+          cycleMembers,
+          contributions,
+          operations,
+          ledgerEntries,
+          loans,
+          loanPayments,
+          loanSchedules,
+          pollaActivities,
+          pollaContributions,
+          pollaPrizes,
+          bankAccounts,
+          bankReconciliations,
+          memberSettlements,
+          memberSettlementPayments,
+          loanProfitDistributions,
+          loanProfitDistributionPayments,
+          loanProfitDistributionPolicies,
+          loanProfitDistributionAllocations,
+          migrationDryRun
+        });
+        triggerDownload({
+          contents: JSON.stringify(backup, null, 2),
+          mimeType: 'application/json;charset=utf-8',
+          fileName: `natillera-${cycle.year}-${fileTimestamp()}-respaldo-abcd.json`
+        });
+      } else if (kind === 'csv') {
+        triggerDownload({
+          contents: buildCsvReport({
+            workspace,
+            cycle,
+            cycleMembers,
+            contributions,
+            operations,
+            ledgerEntries,
+            loans,
+            loanPayments,
+            pollaActivities,
+            pollaContributions,
+            pollaPrizes,
+            bankAccounts,
+            bankReconciliations,
+            memberSettlements,
+            loanProfitDistributions
+          }),
+          mimeType: 'text/csv;charset=utf-8',
+          fileName: `natillera-${cycle.year}-${fileTimestamp()}-reporte.csv`
+        });
+      } else {
+        if (!migrationDryRun) {
+          throw new Error('Primero genera un informe en Mas > Migracion.');
+        }
+        triggerDownload({
+          contents: JSON.stringify(migrationDryRun, null, 2),
+          mimeType: 'application/json;charset=utf-8',
+          fileName: `natillera-${cycle.year}-${fileTimestamp()}-informe-migracion.json`
+        });
+      }
+      setState('success');
+    } catch (caught) {
+      setError(userSafeError(caught));
+      setState('error');
+    }
   }
 
-  return <button type="button" onClick={exportData}>Exportar A+B+C</button>;
+  return (
+    <section className="panel wide">
+      <h2>Respaldos y exportaciones</h2>
+      <p className="muted">Workspace {workspace.name}, ciclo {cycle.year}. El JSON respalda la base actual visible por RLS; el CSV es un reporte y no reemplaza el respaldo JSON.</p>
+      <dl className="summary-list">
+        {Object.entries(counts).map(([label, value]) => (
+          <div key={label}><dt>{label}</dt><dd>{value}</dd></div>
+        ))}
+      </dl>
+      <div className="actions">
+        <button type="button" onClick={() => void runDownload('json')} disabled={jsonState === 'preparing'}>{jsonState === 'preparing' ? 'Preparando...' : 'Descargar respaldo JSON'}</button>
+        <button type="button" onClick={() => void runDownload('csv')} disabled={csvState === 'preparing'}>{csvState === 'preparing' ? 'Preparando...' : 'Descargar reporte CSV'}</button>
+        <button type="button" onClick={() => void runDownload('migration')} disabled={migrationState === 'preparing' || !migrationDryRun}>{migrationState === 'preparing' ? 'Preparando...' : 'Descargar informe de migracion'}</button>
+      </div>
+      {!migrationDryRun ? <p className="warning">El informe de migracion esta deshabilitado porque todavia no se ha generado un dry-run en esta sesion.</p> : null}
+      {jsonState === 'success' ? <p className="notice export-status">Descarga JSON iniciada por el navegador.</p> : null}
+      {csvState === 'success' ? <p className="notice export-status">Descarga CSV iniciada por el navegador.</p> : null}
+      {migrationState === 'success' ? <p className="notice export-status">Descarga de informe iniciada por el navegador.</p> : null}
+      {error ? <p className="error export-status">{error}</p> : null}
+    </section>
+  );
+}
+
+function fileTimestamp() {
+  return new Date().toISOString().replace(/[:.]/g, '-');
+}
+
+function triggerDownload(input: { contents: string; mimeType: string; fileName: string }) {
+  const blob = new Blob([input.contents], { type: input.mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = input.fileName;
+  link.rel = 'noopener';
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  window.setTimeout(() => {
+    URL.revokeObjectURL(url);
+    link.remove();
+  }, 1_000);
+}
+
+function buildCsvReport(input: {
+  workspace: Workspace;
+  cycle: Cycle;
+  cycleMembers: CycleMember[];
+  contributions: SavingsContribution[];
+  operations: FinancialOperation[];
+  ledgerEntries: LedgerEntry[];
+  loans: LoanContract[];
+  loanPayments: LoanPayment[];
+  pollaActivities: PollaActivity[];
+  pollaContributions: PollaContribution[];
+  pollaPrizes: PollaPrize[];
+  bankAccounts: BankAccount[];
+  bankReconciliations: BankReconciliation[];
+  memberSettlements: MemberSettlement[];
+  loanProfitDistributions: LoanProfitDistribution[];
+}) {
+  const rows: unknown[][] = [
+    ['seccion', 'id', 'nombre_o_tipo', 'fecha', 'monto', 'estado', 'detalle'],
+    ['metadata', input.workspace.id, input.workspace.name, new Date().toISOString(), '', input.cycle.status, `ciclo ${input.cycle.year} ${input.cycle.name}`],
+    ...input.cycleMembers.map((item) => ['socios', item.id, item.member?.display_name ?? '', '', item.monthly_quota, item.savings_status, `rango ${item.participation_start_month}-${item.participation_end_month}`]),
+    ...input.contributions.map((item) => ['aportes_ahorro', item.id, item.member_id, item.effective_date, item.amount, item.source, monthKey(item.applied_year, item.applied_month)]),
+    ...input.loans.map((item) => ['prestamos', item.id, item.borrower?.display_name ?? item.external_borrower_name ?? '', item.start_date, item.principal, item.status, `${item.method} ${item.rate_unit}`]),
+    ...input.loanPayments.map((item) => ['cobros_prestamo', item.id, item.loan_id, item.payment_date, item.amount, item.status, `${item.kind} capital ${item.capital_amount} interes ${item.interest_amount}`]),
+    ...input.pollaActivities.map((item) => ['polla_actividades', item.id, item.name, `${item.period_year}-${String(item.period_month).padStart(2, '0')}`, '', item.status, '']),
+    ...input.pollaContributions.map((item) => ['polla_aportes', item.id, item.cycle_member_id, item.paid_date, item.amount, item.status, item.activity_id]),
+    ...input.pollaPrizes.map((item) => ['polla_premios', item.id, item.winner_cycle_member_id, item.awarded_at, item.net_amount, item.status, `bruto ${item.gross_amount}`]),
+    ...input.bankAccounts.map((item) => ['banco_cuentas', item.id, item.display_name, '', '', item.status, item.masked_identifier ?? '']),
+    ...input.bankReconciliations.map((item) => ['banco_conciliaciones', item.id, item.bank_account_id, item.as_of_date, item.difference_amount, item.status, `externo ${item.external_balance}`]),
+    ...input.memberSettlements.map((item) => ['liquidaciones', item.id, item.cycle_member_id, item.cut_date, item.transfer_amount, item.status, item.preview_hash]),
+    ...input.loanProfitDistributions.map((item) => ['utilidad_repartos', item.id, item.policy_version, item.cut_date, item.payment_amount, item.status, item.preview_hash]),
+    ...input.operations.map((item) => ['operaciones', item.id, item.operation_type, item.effective_date, '', item.reverses_operation_id ? 'reversal' : 'posted', item.reference_table ?? '']),
+    ...input.ledgerEntries.map((item) => ['partidas', item.id, item.account, '', item.amount, item.liquidity_location, item.bank_account_id ?? ''])
+  ];
+  return `\uFEFF${rows.map((row) => row.map(csvCell).join(',')).join('\r\n')}\r\n`;
+}
+
+function csvCell(value: unknown) {
+  const text = value == null ? '' : String(value);
+  const formulaSafe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+  return `"${formulaSafe.replace(/"/g, '""')}"`;
 }
 
 function formatNumberForInput(value: Decimal.Value) {
