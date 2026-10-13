@@ -322,7 +322,7 @@ export function App() {
     <Shell>
       <NavigationStyles />
       <TopBar email={session.user.email ?? ''} onLogout={() => logout().then(() => setSession(null))} />
-      {message ? <p className="notice" role="status" aria-live="polite">{message}</p> : null}
+      {message ? <InlineNotice tone="success" className="app-notice">{message}</InlineNotice> : null}
       <SectionTabs activeSection={activeSection} onChange={(section) => navigate(section)} />
       <main id="contenido" className="layout">
         <section className="hero">
@@ -331,7 +331,7 @@ export function App() {
             <h1>{cycle.name}</h1>
             <p>Ciclo {cycle.year}: {cycle.starts_on} a {cycle.closes_on}</p>
           </div>
-          <button type="button" onClick={() => navigate('more', 'exports')}>Respaldos</button>
+          <Button type="button" onClick={() => navigate('more', 'exports')}>Respaldos</Button>
         </section>
 
         {activeSection === 'home' ? (
@@ -509,9 +509,72 @@ function TopBar({ email, onLogout }: { email: string; onLogout: () => void }) {
       <strong>Natillera Manager</strong>
       <div>
         <span>{email}</span>
-        <button type="button" onClick={onLogout}>Salir</button>
+        <Button type="button" variant="secondary" onClick={onLogout}>Salir</Button>
       </div>
     </header>
+  );
+}
+
+type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger';
+
+function Button({
+  variant = 'primary',
+  className,
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) {
+  return <button {...props} className={['button', `button-${variant}`, className].filter(Boolean).join(' ')} />;
+}
+
+function Panel({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLElement>) {
+  return <section {...props} className={['panel', className].filter(Boolean).join(' ')} />;
+}
+
+function Field({
+  label,
+  hint,
+  error,
+  children
+}: {
+  label: string;
+  hint?: string;
+  error?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      {children}
+      {hint ? <small className="field-hint">{hint}</small> : null}
+      {error ? <small className="field-error">{error}</small> : null}
+    </label>
+  );
+}
+
+function StatusBadge({ tone, children }: { tone: 'success' | 'warning' | 'danger' | 'neutral'; children: React.ReactNode }) {
+  return <span className={`status-badge status-badge-${tone}`}>{children}</span>;
+}
+
+function InlineNotice({
+  tone,
+  className,
+  children
+}: {
+  tone: 'success' | 'warning' | 'danger' | 'neutral' | 'uncertain';
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const isAlert = tone === 'danger';
+  return (
+    <p
+      className={['inline-notice', `inline-notice-${tone}`, className].filter(Boolean).join(' ')}
+      role={isAlert ? 'alert' : 'status'}
+      aria-live={isAlert ? 'assertive' : 'polite'}
+    >
+      {children}
+    </p>
   );
 }
 
@@ -520,13 +583,15 @@ function NavigationStyles() {
     <style>
       {`
         .section-tabs {
-          background: #f6f8f5;
-          border-bottom: 1px solid #d9e2d5;
-          box-shadow: 0 8px 24px rgba(23, 32, 38, 0.12);
+          background: rgba(245, 248, 246, 0.96);
+          border-bottom: 1px solid var(--color-border);
+          box-shadow: 0 8px 24px rgba(16, 32, 24, 0.12);
           display: flex;
           gap: 8px;
           isolation: isolate;
           left: 0;
+          max-width: 100vw;
+          min-width: 0;
           overflow-x: auto;
           padding: 8px clamp(12px, 4vw, 48px);
           position: sticky;
@@ -534,13 +599,14 @@ function NavigationStyles() {
           scrollbar-width: thin;
           transform: translateZ(0);
           top: 0;
+          width: 100%;
           z-index: 2147483000;
         }
 
         .section-tab {
-          background: #ffffff;
-          border: 1px solid #cbd5c6;
-          color: #14532d;
+          background: var(--color-surface);
+          border: 1px solid var(--color-border-strong);
+          color: var(--color-primary);
           flex: 0 0 auto;
           font-weight: 700;
           min-height: 44px;
@@ -552,8 +618,8 @@ function NavigationStyles() {
         }
 
         .section-tab[aria-current="page"] {
-          background: #14532d;
-          border-color: #14532d;
+          background: var(--color-primary);
+          border-color: var(--color-primary);
           color: #ffffff;
         }
 
@@ -561,24 +627,29 @@ function NavigationStyles() {
           display: flex;
           flex-wrap: wrap;
           gap: 8px;
+          min-width: 0;
         }
 
         .more-tab {
-          background: #ffffff;
-          border: 1px solid #cbd5c6;
-          color: #14532d;
+          background: var(--color-surface);
+          border: 1px solid var(--color-border-strong);
+          color: var(--color-primary);
+          flex: 1 1 144px;
           min-height: 38px;
+          min-width: 0;
+          white-space: normal;
         }
 
         .more-tab[aria-current="page"] {
-          background: #14532d;
-          border-color: #14532d;
+          background: var(--color-primary);
+          border-color: var(--color-primary);
           color: #ffffff;
         }
 
         .section-view {
           display: grid;
           gap: 18px;
+          min-width: 0;
         }
 
         .home-cut-panel {
@@ -625,7 +696,7 @@ function NavigationStyles() {
             align-content: start;
             border-top: 0;
             border-bottom: 0;
-            border-right: 1px solid #d9e2d5;
+            border-right: 1px solid var(--color-border);
             bottom: 0;
             box-shadow: none;
             flex-direction: column;
@@ -647,6 +718,8 @@ function NavigationStyles() {
           .section-tabs {
             justify-content: space-between;
             min-height: var(--primary-nav-height);
+            padding-left: 8px;
+            padding-right: 8px;
           }
 
           .section-tab {
@@ -744,24 +817,22 @@ function LoginPanel({ onAuthenticated }: { onAuthenticated: () => Promise<void> 
 
   return (
     <main className="login">
-      <section className="panel login-panel">
+      <Panel className="login-panel">
         <p className="eyebrow">Acceso privado</p>
         <h1>Natillera Manager</h1>
         <form onSubmit={submit}>
-          <label>
-            Correo autorizado
+          <Field label="Correo autorizado">
             <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required disabled={pending || sent} />
-          </label>
+          </Field>
           {sent ? (
-            <label>
-              Codigo recibido
+            <Field label="Codigo recibido" hint="Usa el codigo temporal enviado al correo autorizado.">
               <input value={token} onChange={(event) => setToken(event.target.value)} inputMode="numeric" required disabled={pending} />
-            </label>
+            </Field>
           ) : null}
-          <button type="submit" disabled={pending}>{pending ? 'Procesando...' : sent ? 'Ingresar' : 'Enviar codigo'}</button>
+          <Button type="submit" disabled={pending}>{pending ? 'Procesando...' : sent ? 'Ingresar' : 'Enviar codigo'}</Button>
         </form>
-        {error ? <p className="error" role="alert">{error}</p> : null}
-      </section>
+        {error ? <InlineNotice tone="danger">{error}</InlineNotice> : null}
+      </Panel>
     </main>
   );
 }
@@ -783,25 +854,28 @@ function HomeActionsPanel({
   const blockerCount = migrationReport?.issues.filter((issue) => issue.category === 'blocking').length ?? 0;
 
   return (
-    <section className="panel">
+    <Panel>
       <h2>Inicio</h2>
+      <StatusBadge tone={cycleMembers.length === 0 ? 'warning' : 'success'}>
+        {cycleMembers.length === 0 ? 'Sin socios del ciclo' : 'Ciclo con datos visibles'}
+      </StatusBadge>
       <p className="muted">
         {cycleMembers.length === 0
           ? 'La base operativa no tiene socios cargados en este ciclo. Un respaldo legacy prevalidado no equivale a importacion.'
           : `Ciclo operativo con ${cycleMembers.length} socios visibles para este usuario.`}
       </p>
       {migrationReport ? (
-        <p className={blockerCount || decisionCount ? 'warning' : 'notice'}>
+        <InlineNotice tone={blockerCount || decisionCount ? 'warning' : 'success'}>
           Migracion leida: {blockerCount} bloqueantes y {decisionCount} decisiones pendientes. El dry-run no publica datos operativos.
-        </p>
+        </InlineNotice>
       ) : null}
       <div className="quick-actions">
-        <button type="button" onClick={onSavings}>Registrar aporte</button>
-        <button type="button" onClick={onLoans}>Registrar cobro</button>
-        <button type="button" onClick={onSavings}>Consultar socio</button>
-        <button type="button" onClick={onMigration}>Revisar migracion</button>
+        <Button type="button" onClick={onSavings}>Registrar aporte</Button>
+        <Button type="button" onClick={onLoans}>Registrar cobro</Button>
+        <Button type="button" variant="secondary" onClick={onSavings}>Consultar socio</Button>
+        <Button type="button" variant="quiet" onClick={onMigration}>Revisar migracion</Button>
       </div>
-    </section>
+    </Panel>
   );
 }
 

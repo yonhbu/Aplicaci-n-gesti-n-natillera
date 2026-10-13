@@ -354,6 +354,23 @@ async function expectShellNavigationClear(page: Page) {
       }
     }
   });
+
+  const overflow = await page.evaluate(() => {
+    const doc = document.documentElement;
+    const body = document.body;
+    return {
+      documentClientWidth: doc.clientWidth,
+      documentScrollWidth: doc.scrollWidth,
+      bodyClientWidth: body.clientWidth,
+      bodyScrollWidth: body.scrollWidth,
+      tableWraps: Array.from(document.querySelectorAll('.table-wrap')).map((element) => ({
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth
+      }))
+    };
+  });
+  expect(overflow.documentScrollWidth, JSON.stringify(overflow)).toBeLessThanOrEqual(overflow.documentClientWidth + 1);
+  expect(overflow.bodyScrollWidth, JSON.stringify(overflow)).toBeLessThanOrEqual(overflow.bodyClientWidth + 1);
 }
 
 async function downloadText(download: { path(): Promise<string | null> }) {
