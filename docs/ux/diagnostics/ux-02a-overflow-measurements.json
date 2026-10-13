@@ -1,0 +1,401 @@
+[
+  {
+    "path": "#/savings",
+    "viewport": 320,
+    "documentClientWidth": 320,
+    "documentScrollWidth": 390,
+    "bodyClientWidth": 320,
+    "bodyScrollWidth": 390,
+    "hasGlobalOverflow": true,
+    "offenderCount": 48,
+    "offenders": [
+      {
+        "tag": "section",
+        "className": "hero",
+        "text": "Natillera E2E sinteticaNatillera 2026Ciclo 2026: 2026-01-01 a 2026-12-15Respaldo",
+        "left": 16,
+        "right": 390,
+        "width": 374,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "div",
+        "className": "",
+        "text": "Natillera E2E sinteticaNatillera 2026Ciclo 2026: 2026-01-01 a 2026-12-15",
+        "left": 16,
+        "right": 390,
+        "width": 374,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "p",
+        "className": "eyebrow",
+        "text": "Natillera E2E sintetica",
+        "left": 16,
+        "right": 390,
+        "width": 374,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "h1",
+        "className": "",
+        "text": "Natillera 2026",
+        "left": 16,
+        "right": 390,
+        "width": 374,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "p",
+        "className": "",
+        "text": "Ciclo 2026: 2026-01-01 a 2026-12-15",
+        "left": 16,
+        "right": 390,
+        "width": 374,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "button",
+        "className": "",
+        "text": "Respaldos",
+        "left": 16,
+        "right": 390,
+        "width": 374,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "div",
+        "className": "section-view",
+        "text": "SociosEditar socioNuevo socioNombre visibleLegacy IDCuota mensualDesdeEneroFebre",
+        "left": 16,
+        "right": 390,
+        "width": 374,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "div",
+        "className": "columns",
+        "text": "SociosEditar socioNuevo socioNombre visibleLegacy IDCuota mensualDesdeEneroFebre",
+        "left": 16,
+        "right": 390,
+        "width": 374,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "section",
+        "className": "panel",
+        "text": "SociosEditar socioNuevo socioNombre visibleLegacy IDCuota mensualDesdeEneroFebre",
+        "left": 16,
+        "right": 390,
+        "width": 374,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "h2",
+        "className": "",
+        "text": "Socios",
+        "left": 35,
+        "right": 371,
+        "width": 336,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "form",
+        "className": "form-grid",
+        "text": "Editar socioNuevo socioNombre visibleLegacy IDCuota mensualDesdeEneroFebreroMarz",
+        "left": 35,
+        "right": 371,
+        "width": 336,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "label",
+        "className": "",
+        "text": "Editar socioNuevo socio",
+        "left": 35,
+        "right": 371,
+        "width": 336,
+        "overflowX": "visible"
+      }
+    ],
+    "tableWraps": [
+      {
+        "clientWidth": 336,
+        "scrollWidth": 336,
+        "hasLegitTableScroll": false
+      }
+    ]
+  },
+  {
+    "path": "#/savings",
+    "viewport": 375,
+    "documentClientWidth": 375,
+    "documentScrollWidth": 390,
+    "bodyClientWidth": 375,
+    "bodyScrollWidth": 390,
+    "hasGlobalOverflow": true,
+    "offenderCount": 11,
+    "offenders": [
+      {
+        "tag": "section",
+        "className": "hero",
+        "text": "Natillera E2E sinteticaNatillera 2026Ciclo 2026: 2026-01-01 a 2026-12-15Respaldo",
+        "left": 16,
+        "right": 390,
+        "width": 374,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "div",
+        "className": "",
+        "text": "Natillera E2E sinteticaNatillera 2026Ciclo 2026: 2026-01-01 a 2026-12-15",
+        "left": 16,
+        "right": 390,
+        "width": 374,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "p",
+        "className": "eyebrow",
+        "text": "Natillera E2E sintetica",
+        "left": 16,
+        "right": 390,
+        "width": 374,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "h1",
+        "className": "",
+        "text": "Natillera 2026",
+        "left": 16,
+        "right": 390,
+        "width": 374,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "p",
+        "className": "",
+        "text": "Ciclo 2026: 2026-01-01 a 2026-12-15",
+        "left": 16,
+        "right": 390,
+        "width": 374,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "button",
+        "className": "",
+        "text": "Respaldos",
+        "left": 16,
+        "right": 390,
+        "width": 374,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "div",
+        "className": "section-view",
+        "text": "SociosEditar socioNuevo socioNombre visibleLegacy IDCuota mensualDesdeEneroFebre",
+        "left": 16,
+        "right": 390,
+        "width": 374,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "div",
+        "className": "columns",
+        "text": "SociosEditar socioNuevo socioNombre visibleLegacy IDCuota mensualDesdeEneroFebre",
+        "left": 16,
+        "right": 390,
+        "width": 374,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "section",
+        "className": "panel",
+        "text": "SociosEditar socioNuevo socioNombre visibleLegacy IDCuota mensualDesdeEneroFebre",
+        "left": 16,
+        "right": 390,
+        "width": 374,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "section",
+        "className": "panel",
+        "text": "Aportes de ahorroSocioSeleccionarMonto recibidoFecha efectivaMes aplicadoEneroFe",
+        "left": 16,
+        "right": 390,
+        "width": 374,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "section",
+        "className": "panel wide",
+        "text": "Detalle por socioSocioCuotaRangoRecibidoUltimos meses",
+        "left": 16,
+        "right": 390,
+        "width": 374,
+        "overflowX": "visible"
+      }
+    ],
+    "tableWraps": [
+      {
+        "clientWidth": 336,
+        "scrollWidth": 336,
+        "hasLegitTableScroll": false
+      }
+    ]
+  },
+  {
+    "path": "#/savings",
+    "viewport": 390,
+    "documentClientWidth": 390,
+    "documentScrollWidth": 390,
+    "bodyClientWidth": 390,
+    "bodyScrollWidth": 390,
+    "hasGlobalOverflow": false,
+    "offenderCount": 0,
+    "offenders": [],
+    "tableWraps": [
+      {
+        "clientWidth": 336,
+        "scrollWidth": 336,
+        "hasLegitTableScroll": false
+      }
+    ]
+  },
+  {
+    "path": "#/more/movements",
+    "viewport": 320,
+    "documentClientWidth": 320,
+    "documentScrollWidth": 333,
+    "bodyClientWidth": 320,
+    "bodyScrollWidth": 333,
+    "hasGlobalOverflow": true,
+    "offenderCount": 9,
+    "offenders": [
+      {
+        "tag": "section",
+        "className": "hero",
+        "text": "Natillera E2E sinteticaNatillera 2026Ciclo 2026: 2026-01-01 a 2026-12-15Respaldo",
+        "left": 16,
+        "right": 333,
+        "width": 317,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "div",
+        "className": "",
+        "text": "Natillera E2E sinteticaNatillera 2026Ciclo 2026: 2026-01-01 a 2026-12-15",
+        "left": 16,
+        "right": 333,
+        "width": 317,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "p",
+        "className": "eyebrow",
+        "text": "Natillera E2E sintetica",
+        "left": 16,
+        "right": 333,
+        "width": 317,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "h1",
+        "className": "",
+        "text": "Natillera 2026",
+        "left": 16,
+        "right": 333,
+        "width": 317,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "p",
+        "className": "",
+        "text": "Ciclo 2026: 2026-01-01 a 2026-12-15",
+        "left": 16,
+        "right": 333,
+        "width": 317,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "button",
+        "className": "",
+        "text": "Respaldos",
+        "left": 16,
+        "right": 333,
+        "width": 317,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "div",
+        "className": "section-view",
+        "text": "Banco y cajaMovimientosLiquidacionesUtilidadRespaldosMigracionMovimientos financ",
+        "left": 16,
+        "right": 333,
+        "width": 317,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "nav",
+        "className": "more-tabs",
+        "text": "Banco y cajaMovimientosLiquidacionesUtilidadRespaldosMigracion",
+        "left": 16,
+        "right": 333,
+        "width": 317,
+        "overflowX": "visible"
+      },
+      {
+        "tag": "section",
+        "className": "panel wide",
+        "text": "Movimientos financierosCorteFechaTipoReferenciaPartidasNo hay movimientos public",
+        "left": 16,
+        "right": 333,
+        "width": 317,
+        "overflowX": "visible"
+      }
+    ],
+    "tableWraps": [
+      {
+        "clientWidth": 279,
+        "scrollWidth": 279,
+        "hasLegitTableScroll": false
+      }
+    ]
+  },
+  {
+    "path": "#/more/movements",
+    "viewport": 375,
+    "documentClientWidth": 375,
+    "documentScrollWidth": 375,
+    "bodyClientWidth": 375,
+    "bodyScrollWidth": 375,
+    "hasGlobalOverflow": false,
+    "offenderCount": 0,
+    "offenders": [],
+    "tableWraps": [
+      {
+        "clientWidth": 305,
+        "scrollWidth": 305,
+        "hasLegitTableScroll": false
+      }
+    ]
+  },
+  {
+    "path": "#/more/movements",
+    "viewport": 390,
+    "documentClientWidth": 390,
+    "documentScrollWidth": 390,
+    "bodyClientWidth": 390,
+    "bodyScrollWidth": 390,
+    "hasGlobalOverflow": false,
+    "offenderCount": 0,
+    "offenders": [],
+    "tableWraps": [
+      {
+        "clientWidth": 320,
+        "scrollWidth": 320,
+        "hasLegitTableScroll": false
+      }
+    ]
+  }
+]
