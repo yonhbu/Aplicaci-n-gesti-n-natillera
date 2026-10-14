@@ -62,6 +62,7 @@ async function captureAll(baseUrl) {
   const page = await browser.newPage();
   const measurements = [];
   const figures = [];
+  const savingsSnapshots = [];
   try {
     await login(page, baseUrl);
     for (const viewport of viewports) {
@@ -76,6 +77,9 @@ async function captureAll(baseUrl) {
         if (route.name === 'home') {
           figures.push(await readDashboardFigures(page, viewport.name));
         }
+        if (route.name === 'ahorros') {
+          savingsSnapshots.push(await readSavingsSnapshot(page, viewport.name));
+        }
       }
     }
   } finally {
@@ -83,6 +87,7 @@ async function captureAll(baseUrl) {
   }
   await writeFile(path.join(outRoot, 'measurements.json'), JSON.stringify(measurements, null, 2));
   await writeFile(path.join(outRoot, 'dashboard-figures.json'), JSON.stringify(figures, null, 2));
+  await writeFile(path.join(outRoot, 'savings-snapshot.json'), JSON.stringify(savingsSnapshots, null, 2));
   await writeFile(path.join(outRoot, 'README.md'), [
     `# ${suite} baseline ${phase}`,
     '',
@@ -92,6 +97,30 @@ async function captureAll(baseUrl) {
     'Viewports: 320, 375, 390, 768, 1024, 1440.',
     ''
   ].join('\n'));
+}
+
+async function readSavingsSnapshot(page, viewport) {
+  return await page.evaluate((viewport) => ({
+    viewport,
+    hash: location.hash,
+    metrics: Array.from(document.querySelectorAll('[data-savings-metric-key]')).map((element) => ({
+      key: element.getAttribute('data-savings-metric-key'),
+      label: element.querySelector('[data-figure-label]')?.textContent?.trim() ?? '',
+      value: element.querySelector('[data-figure-value]')?.textContent?.trim() ?? ''
+    })),
+    rows: Array.from(document.querySelectorAll(
+      document.querySelector('.savings-members-panel')
+        ? '.savings-members-panel [data-savings-member-row]'
+        : 'table tbody tr'
+    )).map((element) => ({
+      key: element.getAttribute('data-savings-member-row'),
+      text: element.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+    })),
+    contributions: Array.from(document.querySelectorAll('[data-savings-contribution-row]')).map((element) => ({
+      key: element.getAttribute('data-savings-contribution-row'),
+      text: element.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+    }))
+  }), viewport);
 }
 
 async function readDashboardFigures(page, viewport) {
@@ -176,6 +205,133 @@ async function seedSyntheticDataset() {
     });
     if (cycleMember.error) {
       throw new Error(cycleMember.error.message);
+    }
+  }
+  if (suite === 'ux-04') {
+    await seedUx04Dataset(admin, workspace.data, cycle.data);
+  }
+}
+
+async function seedUx04Dataset(admin, workspace, cycle) {
+  const users = await admin.auth.admin.listUsers();
+  if (users.error) {
+    throw new Error(users.error.message);
+  }
+  const actor = users.data.users.find((user) => user.email?.toLowerCase() === adminEmail);
+  if (!actor) {
+    throw new Error(`Usuario admin TEST ${adminEmail} no encontrado.`);
+  }
+
+  const fixtures = [
+    {
+      legacyId: 'ux04-socia-rango-parcial-001',
+      name: 'Ana Maria UX04 rango febrero a noviembre',
+      quota: '150000.00',
+      start: 2,
+      end: 11,
+      polla: true,
+      profit: true,
+      contributions: [
+        ['ux04-ana-feb', '150000.00', '2026-02-05', 2, 'bank_transfer', 'manual'],
+        ['ux04-ana-mar-parcial', '75000.00', '2026-03-10', 3, 'cash', 'manual'],
+        ['ux04-ana-sep-extra', '1250000.00', '2026-09-29', 10, 'bank_deposit', 'manual']
+      ]
+    },
+    {
+      legacyId: 'LEGACY-UX04-HEREDADO-00000000000000000002',
+      name: 'Entidad heredada UX04 con identificador muy largo para migracion',
+      quota: '200000.00',
+      start: 1,
+      end: 12,
+      polla: false,
+      profit: false,
+      contributions: [
+        ['ux04-legacy-jan', '200000.00', '2026-01-15', 1, 'other', 'legacy_operational_import'],
+        ['ux04-legacy-oct-large', '2500000.00', '2026-10-01', 10, 'bank_transfer', 'legacy_operational_import']
+      ]
+    },
+    {
+      legacyId: 'ux04-socio-corto-003',
+      name: 'Carlos UX04 junio agosto',
+      quota: '90000.00',
+      start: 6,
+      end: 8,
+      polla: true,
+      profit: false,
+      contributions: [
+        ['ux04-carlos-jun', '90000.00', '2026-06-03', 6, 'cash', 'manual'],
+        ['ux04-carlos-jul-partial', '45000.00', '2026-07-20', 7, 'cash', 'manual']
+      ]
+    }
+  ];
+
+  for (const fixture of fixtures) {
+    const existingMember = await admin
+      .from('members')
+      .select('*')
+      .eq('workspace_id', workspace.id)
+      .eq('legacy_id', fixture.legacyId)
+      .maybeSingle();
+    if (existingMember.error) {
+      throw new Error(existingMember.error.message);
+    }
+    const memberResult = existingMember.data
+      ? { data: existingMember.data, error: null }
+      : await admin.from('members').insert({
+        workspace_id: workspace.id,
+        legacy_id: fixture.legacyId,
+        display_name: fixture.name,
+        notes: 'Fixture visual UX-04. No usar como dato real.'
+      }).select('*').single();
+    if (memberResult.error || !memberResult.data) {
+      throw new Error(memberResult.error?.message ?? `No fue posible crear miembro ${fixture.legacyId}.`);
+    }
+
+    const existingCycleMember = await admin
+      .from('cycle_members')
+      .select('*')
+      .eq('cycle_id', cycle.id)
+      .eq('member_id', memberResult.data.id)
+      .maybeSingle();
+    if (existingCycleMember.error) {
+      throw new Error(existingCycleMember.error.message);
+    }
+    const cycleMemberResult = existingCycleMember.data
+      ? { data: existingCycleMember.data, error: null }
+      : await admin.from('cycle_members').insert({
+        workspace_id: workspace.id,
+        cycle_id: cycle.id,
+        member_id: memberResult.data.id,
+        monthly_quota: fixture.quota,
+        participation_start_month: fixture.start,
+        participation_end_month: fixture.end,
+        participates_in_savings: true,
+        participates_in_polla: fixture.polla,
+        participates_in_loan_profit: fixture.profit,
+        savings_status: 'active'
+      }).select('*').single();
+    if (cycleMemberResult.error || !cycleMemberResult.data) {
+      throw new Error(cycleMemberResult.error?.message ?? `No fue posible crear participacion ${fixture.legacyId}.`);
+    }
+
+    for (const [key, amount, effectiveDate, appliedMonth, method, source] of fixture.contributions) {
+      const contribution = await admin.from('savings_contributions').upsert({
+        workspace_id: workspace.id,
+        cycle_id: cycle.id,
+        member_id: memberResult.data.id,
+        cycle_member_id: cycleMemberResult.data.id,
+        idempotency_key: key,
+        amount,
+        effective_date: effectiveDate,
+        applied_year: cycle.year,
+        applied_month: appliedMonth,
+        method,
+        source,
+        actor_user_id: actor.id
+      }, { onConflict: 'workspace_id,idempotency_key' });
+      if (contribution.error) {
+        throw new Error(contribution.error.message);
+      }
     }
   }
 }

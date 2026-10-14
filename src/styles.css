@@ -438,10 +438,19 @@ th {
   min-width: 0;
 }
 
+.dashboard-priority-row {
+  display: grid;
+  min-width: 0;
+}
+
 .dashboard-actions {
   align-content: start;
   display: grid;
   gap: 14px;
+}
+
+.dashboard-actions-priority {
+  box-shadow: 0 10px 22px rgba(20, 83, 45, 0.08);
 }
 
 .dashboard-action-grid {
@@ -451,6 +460,130 @@ th {
 
 .dashboard-action-grid button {
   width: 100%;
+}
+
+.savings-page {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.savings-overview {
+  align-items: end;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+}
+
+.savings-overview h2,
+.savings-member-editor h2,
+.savings-contribution-panel h2,
+.savings-members-panel h2,
+.savings-history-panel h2,
+.member-card h3 {
+  margin: 0 0 8px;
+}
+
+.savings-overview p,
+.savings-member-editor p,
+.savings-contribution-panel p,
+.savings-members-panel p,
+.savings-history-panel p {
+  margin-bottom: 0;
+}
+
+.savings-overview-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.savings-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.savings-primary-grid {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  min-width: 0;
+}
+
+.savings-contribution-panel {
+  border-color: #b7dfc4;
+}
+
+.savings-member-editor,
+.savings-contribution-panel,
+.savings-members-panel,
+.savings-history-panel {
+  scroll-margin-top: calc(var(--primary-nav-height) + 24px);
+}
+
+.section-toolbar {
+  align-items: end;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
+  margin-bottom: 16px;
+  min-width: 0;
+}
+
+.compact-search input {
+  min-height: 40px;
+}
+
+.member-card-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 16px;
+  min-width: 0;
+}
+
+.member-card {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.member-card h3 {
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.mini-definition-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  min-width: 0;
+}
+
+.mini-definition-grid div {
+  min-width: 0;
+}
+
+.mini-definition-grid dt {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.mini-definition-grid dd {
+  font-variant-numeric: tabular-nums;
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.field-invalid input,
+.field-invalid select {
+  border-color: var(--color-danger);
+  box-shadow: 0 0 0 1px var(--color-danger);
 }
 
 .definition-grid {
@@ -635,7 +768,13 @@ th {
   .dashboard-metrics,
   .dashboard-metrics-compact,
   .dashboard-two-column,
-  .dashboard-action-grid {
+  .dashboard-action-grid,
+  .savings-overview,
+  .savings-metrics,
+  .savings-primary-grid,
+  .section-toolbar,
+  .member-card-grid,
+  .mini-definition-grid {
     grid-template-columns: 1fr;
   }
 }

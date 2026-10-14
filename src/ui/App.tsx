@@ -41,7 +41,7 @@ import { prevalidateLegacySources, type LegacyPrevalidationReport } from '../dom
 import { buildMigrationDryRun, type MigrationDryRunReport } from '../domain/migrationD';
 import { formatCop, parseCop, toDatabaseMoney } from '../domain/money';
 import { buildPendingContributionOperation, type PendingContributionOperation } from '../domain/pendingContribution';
-import type { ContributionMethod } from '../domain/savings';
+import { validateContributionDraft, type ContributionMethod } from '../domain/savings';
 import { previewWithdrawal } from '../domain/withdrawal';
 import { clearPendingContribution, readPendingContribution, writePendingContribution } from '../lib/pendingContributionStorage';
 import { clearPendingFinancialOperation, getOrCreatePendingFinancialOperation, writePendingFinancialOperation, type PendingFinancialOperation } from '../lib/pendingFinancialOperationStorage';
@@ -353,25 +353,18 @@ export function App() {
 
         {activeSection === 'savings' ? (
           <div className="section-view">
-            <div className="columns">
-              <MemberForm
-                workspace={workspace}
-                cycle={cycle}
-                cycleMembers={cycleMembers}
-                onSaved={async () => {
-                  await refreshAll();
-                  setMessage('Socio guardado.');
-                }}
-                onError={(error) => setMessage(userSafeError(error))}
-              />
-              <ContributionForm
-                cycle={cycle}
-                cycleMembers={cycleMembers}
-                onSaved={handleContributionSaved}
-                onError={(error) => setMessage(userSafeError(error))}
-              />
-            </div>
-            <MembersTable cycleMembers={cycleMembers} contributions={contributions} />
+            <SavingsWorkspace
+              cycle={cycle}
+              cycleMembers={cycleMembers}
+              contributions={contributions}
+              workspace={workspace}
+              onMemberSaved={async () => {
+                await refreshAll();
+                setMessage('Socio guardado.');
+              }}
+              onContributionSaved={handleContributionSaved}
+              onError={(error) => setMessage(userSafeError(error))}
+            />
           </div>
         ) : null}
 
@@ -948,7 +941,7 @@ function HomeDashboard({
       label: 'Pendiente descriptivo',
       value: formatCop(savingsTotals.pending),
       detail: 'No equivale por si solo a deuda exigible.',
-      tone: 'warning'
+      tone: 'neutral'
     }
   ];
 
@@ -1001,16 +994,8 @@ function HomeDashboard({
         </InlineNotice>
       ) : null}
 
-      <DashboardSection title="Posicion financiera" description="Saldos al corte. No se suman como disponible unico porque mezclan activos, obligaciones y fondos restringidos.">
-        <MetricGrid items={financialPosition} />
-      </DashboardSection>
-
-      <div className="dashboard-two-column">
-        <DashboardSection title="Seguimiento del ahorro" description="Aportes y cuotas esperadas del ciclo con interpretacion descriptiva.">
-          <MetricGrid items={savingsTracking} compact />
-        </DashboardSection>
-
-        <Panel className="dashboard-actions">
+      <div className="dashboard-priority-row">
+        <Panel className="dashboard-actions dashboard-actions-priority">
           <div>
             <p className="eyebrow">Operaciones frecuentes</p>
             <h3>Acciones del ciclo</h3>
@@ -1023,6 +1008,16 @@ function HomeDashboard({
             <Button type="button" variant="quiet" onClick={onMigration}>Revisar migracion</Button>
           </div>
         </Panel>
+      </div>
+
+      <DashboardSection title="Posicion financiera" description="Saldos al corte. No se suman como disponible unico porque mezclan activos, obligaciones y fondos restringidos.">
+        <MetricGrid items={financialPosition} />
+      </DashboardSection>
+
+      <div className="dashboard-two-column">
+        <DashboardSection title="Seguimiento del ahorro" description="Aportes y cuotas esperadas del ciclo con interpretacion descriptiva.">
+          <MetricGrid items={savingsTracking} compact />
+        </DashboardSection>
       </div>
 
       <DashboardSection title="Informacion complementaria" description="Fondos u obligaciones que ayudan a leer el ciclo, sin convertirlos en saldo libre.">
@@ -1125,6 +1120,98 @@ function MovementsPanel({ operations, ledgerEntries }: { operations: FinancialOp
   );
 }
 
+function SavingsWorkspace({
+  workspace,
+  cycle,
+  cycleMembers,
+  contributions,
+  onMemberSaved,
+  onContributionSaved,
+  onError
+}: {
+  workspace: Workspace;
+  cycle: Cycle;
+  cycleMembers: CycleMember[];
+  contributions: SavingsContribution[];
+  onMemberSaved: () => Promise<void>;
+  onContributionSaved: () => Promise<void>;
+  onError: (error: unknown) => void;
+}) {
+  const totals = useMemo(() => buildSavingsTotals(cycleMembers, contributions), [cycleMembers, contributions]);
+
+  function scrollToPanel(id: string) {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  return (
+    <div className="savings-page">
+      <Panel className="savings-overview">
+        <div className="savings-overview-copy">
+          <p className="eyebrow">{workspace.name}</p>
+          <h2>Ahorros del ciclo</h2>
+          <p className="muted">Ciclo {cycle.year}: administra participaciones y registra aportes sin mezclar fecha efectiva, mes aplicado ni metodo de pago.</p>
+        </div>
+        <div className="savings-overview-actions">
+          <Button type="button" onClick={() => scrollToPanel('registrar-aporte')}>Registrar aporte</Button>
+          <Button type="button" variant="secondary" onClick={() => scrollToPanel('gestionar-socios')}>Crear o editar socio</Button>
+          <Button type="button" variant="quiet" onClick={() => scrollToPanel('historial-ahorros')}>Ver historial</Button>
+        </div>
+      </Panel>
+
+      <div className="dashboard-metrics savings-metrics" aria-label="Resumen de ahorros">
+        <article className="metric-card metric-card-neutral" data-savings-metric-key="socios-ciclo" data-figure-key="socios-ciclo">
+          <span data-figure-label>Socios ciclo</span>
+          <strong data-figure-value>{cycleMembers.length}</strong>
+          <small>Participaciones visibles en este ciclo.</small>
+        </article>
+        <article className="metric-card metric-card-primary" data-savings-metric-key="ahorro-recibido" data-figure-key="ahorro-recibido">
+          <span data-figure-label>Ahorro recibido</span>
+          <strong data-figure-value>{formatCop(totals.contributed)}</strong>
+          <small>Aportes registrados para el ciclo.</small>
+        </article>
+        <article className="metric-card metric-card-neutral" data-savings-metric-key="cuotas-esperadas-ciclo" data-figure-key="cuotas-esperadas-ciclo">
+          <span data-figure-label>Cuotas esperadas ciclo</span>
+          <strong data-figure-value>{formatCop(totals.expected)}</strong>
+          <small>Suma descriptiva por rango de participacion.</small>
+        </article>
+        <article className="metric-card metric-card-neutral" data-savings-metric-key="pendiente-descriptivo" data-figure-key="pendiente-descriptivo">
+          <span data-figure-label>Pendiente descriptivo</span>
+          <strong data-figure-value>{formatCop(totals.pending)}</strong>
+          <small>No equivale por si solo a deuda exigible.</small>
+        </article>
+      </div>
+
+      <div className="savings-primary-grid">
+        <ContributionForm
+          cycle={cycle}
+          cycleMembers={cycleMembers}
+          onSaved={onContributionSaved}
+          onError={onError}
+        />
+        <MemberForm
+          workspace={workspace}
+          cycle={cycle}
+          cycleMembers={cycleMembers}
+          onSaved={onMemberSaved}
+          onError={onError}
+        />
+      </div>
+
+      <MembersTable cycleMembers={cycleMembers} contributions={contributions} />
+      <SavingsContributionHistory cycleMembers={cycleMembers} contributions={contributions} />
+    </div>
+  );
+}
+
+function buildSavingsTotals(cycleMembers: CycleMember[], contributions: SavingsContribution[]) {
+  const contributed = contributions.reduce((sum, item) => sum.plus(item.amount), new Decimal(0));
+  const expected = cycleMembers.reduce((sum, item) => {
+    const activeMonths = item.participation_end_month - item.participation_start_month + 1;
+    return sum.plus(new Decimal(item.monthly_quota).mul(activeMonths));
+  }, new Decimal(0));
+  return { contributed, expected, pending: Decimal.max(expected.minus(contributed), 0) };
+}
+
 function MemberForm({
   workspace,
   cycle,
@@ -1213,8 +1300,9 @@ function MemberForm({
   }
 
   return (
-    <section className="panel">
+    <section id="gestionar-socios" className="panel savings-member-editor">
       <h2>Socios</h2>
+      <p className="muted">Crea participaciones o edita datos descriptivos. Si ya hay aportes, el servidor bloquea cambios retroactivos de cuota o rango.</p>
       <form onSubmit={submit} className="form-grid">
         <label>
           Editar socio
@@ -1268,6 +1356,8 @@ function ContributionForm({
   const [appliedMonth, setAppliedMonth] = useState(new Date().getMonth() + 1);
   const [method, setMethod] = useState<ContributionMethod>('bank_transfer');
   const [pendingOperation, setPendingOperation] = useState<PendingContributionOperation | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [formError, setFormError] = useState('');
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
@@ -1285,10 +1375,21 @@ function ContributionForm({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    setFieldErrors({});
+    setFormError('');
     setPending(true);
     let operationForRetry: PendingContributionOperation | null = null;
     let savedByServer = false;
     try {
+      validateContributionDraft({
+        memberId: cycleMemberId,
+        amountText,
+        effectiveDate,
+        appliedYear: cycle.year,
+        appliedMonth,
+        method,
+        idempotencyKey: pendingOperation?.idempotencyKey ?? 'local-validation-key'
+      });
       const operation = buildPendingContributionOperation({
         existing: pendingOperation,
         now: new Date(),
@@ -1324,6 +1425,8 @@ function ContributionForm({
         setPendingOperation(unknownOperation);
         writePendingContribution(unknownOperation);
       }
+      const message = userSafeError(error);
+      setContributionFieldError(message, setFieldErrors, setFormError);
       onError(error);
     } finally {
       setPending(false);
@@ -1331,28 +1434,33 @@ function ContributionForm({
   }
 
   return (
-    <section className="panel">
+    <section id="registrar-aporte" className="panel savings-contribution-panel">
       <h2>Aportes de ahorro</h2>
+      <p className="muted">Registra dinero recibido. El servidor valida socio, ciclo activo, mes aplicado, idempotencia y rango de participacion.</p>
       {pendingOperation ? (
-        <p className="warning">
+        <InlineNotice tone="warning">
           Hay un aporte pendiente de confirmacion local. Reintenta sin cambiar los datos para resolver la misma operacion.
-        </p>
+        </InlineNotice>
       ) : null}
+      {formError ? <InlineNotice tone="danger">{formError}</InlineNotice> : null}
       <form onSubmit={submit} className="form-grid">
-        <label>
+        <label className={fieldErrors.member ? 'field field-invalid' : 'field'}>
           Socio
           <select aria-label="Socio del aporte" value={cycleMemberId} onChange={(event) => setCycleMemberId(event.target.value)} required disabled={pending}>
             <option value="">Seleccionar</option>
             {cycleMembers.map((item) => <option key={item.id} value={item.id}>{item.member?.display_name}</option>)}
           </select>
+          {fieldErrors.member ? <small className="field-error">{fieldErrors.member}</small> : <small className="field-hint">Usa la participacion del ciclo, no un nombre libre.</small>}
         </label>
-        <label>
+        <label className={fieldErrors.amount ? 'field field-invalid' : 'field'}>
           Monto recibido
-          <input value={amountText} onChange={(event) => setAmountText(event.target.value)} required disabled={pending} />
+          <input value={amountText} onChange={(event) => setAmountText(event.target.value)} required disabled={pending} inputMode="decimal" />
+          {fieldErrors.amount ? <small className="field-error">{fieldErrors.amount}</small> : <small className="field-hint">Ejemplo: 100.000 o 100000.</small>}
         </label>
-        <label>
+        <label className={fieldErrors.date ? 'field field-invalid' : 'field'}>
           Fecha efectiva
           <input type="date" value={effectiveDate} onChange={(event) => setEffectiveDate(event.target.value)} required disabled={pending} />
+          {fieldErrors.date ? <small className="field-error">{fieldErrors.date}</small> : <small className="field-hint">Fecha real desde la que remunera el aporte.</small>}
         </label>
         <MonthSelect label="Mes aplicado" value={appliedMonth} onChange={setAppliedMonth} disabled={pending} />
         <label>
@@ -1370,7 +1478,33 @@ function ContributionForm({
   );
 }
 
+function setContributionFieldError(
+  message: string,
+  setFieldErrors: React.Dispatch<React.SetStateAction<Record<string, string>>>,
+  setFormError: React.Dispatch<React.SetStateAction<string>>
+) {
+  const lower = message.toLowerCase();
+  if (lower.includes('socio')) {
+    setFieldErrors({ member: message });
+    return;
+  }
+  if (lower.includes('aporte') || lower.includes('monto') || lower.includes('positivo') || lower.includes('decimales')) {
+    setFieldErrors({ amount: message });
+    return;
+  }
+  if (lower.includes('fecha')) {
+    setFieldErrors({ date: message });
+    return;
+  }
+  if (lower.includes('mes')) {
+    setFieldErrors({ month: message });
+    return;
+  }
+  setFormError(message);
+}
+
 function MembersTable({ cycleMembers, contributions }: { cycleMembers: CycleMember[]; contributions: SavingsContribution[] }) {
+  const [query, setQuery] = useState('');
   const rows = cycleMembers.map((item) => {
     const own = contributions.filter((contribution) => contribution.cycle_member_id === item.id);
     const total = own.reduce((sum, contribution) => sum.plus(contribution.amount), new Decimal(0));
@@ -1379,12 +1513,43 @@ function MembersTable({ cycleMembers, contributions }: { cycleMembers: CycleMemb
       const key = monthKey(contribution.applied_year, contribution.applied_month);
       byMonth.set(key, (byMonth.get(key) ?? new Decimal(0)).plus(contribution.amount));
     }
-    return { item, total, byMonth };
+    const expected = new Decimal(item.monthly_quota).mul(item.participation_end_month - item.participation_start_month + 1);
+    return { item, total, expected, byMonth, contributionCount: own.length };
+  }).filter(({ item }) => {
+    const haystack = `${item.member?.display_name ?? ''} ${item.member?.legacy_id ?? ''}`.toLowerCase();
+    return haystack.includes(query.trim().toLowerCase());
   });
 
   return (
-    <section className="panel wide">
-      <h2>Detalle por socio</h2>
+    <section id="gestionar-socios-lista" className="panel wide savings-members-panel">
+      <div className="section-toolbar">
+        <div>
+          <h2>Detalle por socio</h2>
+          <p className="muted">Consulta cuota, rango de participacion, banderas del ciclo y aportes agregados.</p>
+        </div>
+        <label className="field compact-search">
+          Buscar socio
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nombre o legacy ID" />
+        </label>
+      </div>
+      <div className="member-card-grid" aria-label="Socios del ciclo">
+        {rows.map(({ item, total, expected, contributionCount }) => (
+          <article key={item.id} className="member-card" data-savings-member-card={item.id}>
+            <div>
+              <h3>{item.member?.display_name}</h3>
+              <p className="muted">{item.member?.legacy_id || 'Sin legacy ID'}</p>
+            </div>
+            <dl className="mini-definition-grid">
+              <div><dt>Cuota</dt><dd>{formatCop(item.monthly_quota)}</dd></div>
+              <div><dt>Rango</dt><dd>{months[item.participation_start_month - 1]} - {months[item.participation_end_month - 1]}</dd></div>
+              <div><dt>Esperado</dt><dd>{formatCop(expected)}</dd></div>
+              <div><dt>Recibido</dt><dd>{formatCop(total)}</dd></div>
+              <div><dt>Aportes</dt><dd>{contributionCount}</dd></div>
+              <div><dt>Polla / utilidad</dt><dd>{item.participates_in_polla ? 'Polla' : 'Sin polla'} / {item.participates_in_loan_profit ? 'Utilidad' : 'Sin utilidad'}</dd></div>
+            </dl>
+          </article>
+        ))}
+      </div>
       <div className="table-wrap">
         <table>
           <thead>
@@ -1398,7 +1563,7 @@ function MembersTable({ cycleMembers, contributions }: { cycleMembers: CycleMemb
           </thead>
           <tbody>
             {rows.map(({ item, total, byMonth }) => (
-              <tr key={item.id}>
+              <tr key={item.id} data-savings-member-row={item.id}>
                 <td>{item.member?.display_name}</td>
                 <td>{formatCop(item.monthly_quota)}</td>
                 <td>{months[item.participation_start_month - 1]} - {months[item.participation_end_month - 1]}</td>
@@ -1409,8 +1574,69 @@ function MembersTable({ cycleMembers, contributions }: { cycleMembers: CycleMemb
           </tbody>
         </table>
       </div>
+      {rows.length === 0 ? <p className="muted">No hay socios que coincidan con la busqueda.</p> : null}
     </section>
   );
+}
+
+function SavingsContributionHistory({ cycleMembers, contributions }: { cycleMembers: CycleMember[]; contributions: SavingsContribution[] }) {
+  const membersByCycleMemberId = new Map(cycleMembers.map((item) => [item.id, item]));
+  const rows = contributions.slice(0, 12).map((contribution) => ({
+    contribution,
+    member: membersByCycleMemberId.get(contribution.cycle_member_id)
+  }));
+
+  return (
+    <section id="historial-ahorros" className="panel wide savings-history-panel">
+      <h2>Historial y seguimiento</h2>
+      <p className="muted">Ultimos aportes registrados. La fecha efectiva y el mes aplicado se muestran separados por regla de negocio.</p>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Socio</th>
+              <th>Monto</th>
+              <th>Fecha efectiva</th>
+              <th>Mes aplicado</th>
+              <th>Metodo</th>
+              <th>Fuente</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ contribution, member }) => (
+              <tr key={contribution.id} data-savings-contribution-row={contribution.id}>
+                <th scope="row">{member?.member?.display_name ?? contribution.member_id}</th>
+                <td>{formatCop(contribution.amount)}</td>
+                <td>{contribution.effective_date}</td>
+                <td>{monthKey(contribution.applied_year, contribution.applied_month)}</td>
+                <td>{contributionMethodLabel(contribution.method)}</td>
+                <td>{contributionSourceLabel(contribution.source)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {rows.length === 0 ? <p className="muted">No hay aportes registrados en este ciclo.</p> : null}
+    </section>
+  );
+}
+
+function contributionMethodLabel(method: SavingsContribution['method']) {
+  return {
+    bank_transfer: 'Transferencia',
+    bank_deposit: 'Consignacion banco',
+    cash: 'Efectivo',
+    other: 'Otro'
+  }[method];
+}
+
+function contributionSourceLabel(source: SavingsContribution['source']) {
+  return {
+    manual: 'Manual',
+    legacy_prevalidation: 'Legacy prevalidado',
+    legacy_migration_trial: 'Ensayo migracion',
+    legacy_operational_import: 'Importacion legacy'
+  }[source];
 }
 
 function LoansPanel({
