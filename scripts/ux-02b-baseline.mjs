@@ -6,7 +6,8 @@ import path from 'node:path';
 
 const phase = readArg('--phase') ?? 'after';
 const port = Number(readArg('--port') ?? '5182');
-const outRoot = path.resolve('docs/ux/baseline/ux-02b', phase);
+const suite = readArg('--suite') ?? 'ux-02b';
+const outRoot = path.resolve('docs/ux/baseline', suite, phase);
 const adminEmail = 'e2e-admin@example.test';
 const routes = [
   { name: 'home', hash: '#/home' },
@@ -60,6 +61,7 @@ async function captureAll(baseUrl) {
   const browser = await chromium.launch({ channel: 'chrome' });
   const page = await browser.newPage();
   const measurements = [];
+  const figures = [];
   try {
     await login(page, baseUrl);
     for (const viewport of viewports) {
@@ -71,14 +73,18 @@ async function captureAll(baseUrl) {
         const fileName = `${route.name}-${viewport.name}.png`;
         await page.screenshot({ path: path.join(outRoot, fileName), fullPage: false });
         measurements.push(await measureOverflow(page, route.name, viewport.name));
+        if (route.name === 'home') {
+          figures.push(await readDashboardFigures(page, viewport.name));
+        }
       }
     }
   } finally {
     await browser.close();
   }
   await writeFile(path.join(outRoot, 'measurements.json'), JSON.stringify(measurements, null, 2));
+  await writeFile(path.join(outRoot, 'dashboard-figures.json'), JSON.stringify(figures, null, 2));
   await writeFile(path.join(outRoot, 'README.md'), [
-    `# UX-02B baseline ${phase}`,
+    `# ${suite} baseline ${phase}`,
     '',
     `Fecha generada: ${new Date().toISOString()}`,
     'Entorno: TEST descartable con dataset sintetico fijo.',
@@ -86,6 +92,26 @@ async function captureAll(baseUrl) {
     'Viewports: 320, 375, 390, 768, 1024, 1440.',
     ''
   ].join('\n'));
+}
+
+async function readDashboardFigures(page, viewport) {
+  return await page.evaluate((viewport) => ({
+    viewport,
+    hash: location.hash,
+    figures: Array.from(document.querySelectorAll('[data-figure-key], .metrics > div')).map((element) => {
+      const label = element.querySelector('[data-figure-label]')?.textContent?.trim()
+        ?? element.querySelector('span')?.textContent?.trim()
+        ?? '';
+      const value = element.querySelector('[data-figure-value]')?.textContent?.trim()
+        ?? element.querySelector('strong')?.textContent?.trim()
+        ?? '';
+      return {
+        key: element.getAttribute('data-figure-key') ?? label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+        label,
+        value
+      };
+    })
+  }), viewport);
 }
 
 async function seedSyntheticDataset() {

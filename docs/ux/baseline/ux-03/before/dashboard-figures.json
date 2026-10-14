@@ -1,0 +1,368 @@
+[
+  {
+    "viewport": "320",
+    "hash": "#/home",
+    "figures": [
+      {
+        "key": "socios-ciclo",
+        "label": "Socios ciclo",
+        "value": "1"
+      },
+      {
+        "key": "ahorro-recibido",
+        "label": "Ahorro recibido",
+        "value": "$ 0"
+      },
+      {
+        "key": "cuotas-esperadas-ciclo",
+        "label": "Cuotas esperadas ciclo",
+        "value": "$ 1.500.000"
+      },
+      {
+        "key": "pendiente-descriptivo",
+        "label": "Pendiente descriptivo",
+        "value": "$ 1.500.000"
+      },
+      {
+        "key": "caja-reconstruida",
+        "label": "Caja reconstruida",
+        "value": "$ 0"
+      },
+      {
+        "key": "cartera",
+        "label": "Cartera",
+        "value": "$ 0"
+      },
+      {
+        "key": "ahorro-por-pagar",
+        "label": "Ahorro por pagar",
+        "value": "$ 0"
+      },
+      {
+        "key": "bolsa-polla",
+        "label": "Bolsa polla",
+        "value": "$ 0"
+      },
+      {
+        "key": "premios-pendientes",
+        "label": "Premios pendientes",
+        "value": "$ 0"
+      },
+      {
+        "key": "fondo-utilidad-prestamos",
+        "label": "Fondo utilidad prestamos",
+        "value": "$ 0"
+      },
+      {
+        "key": "administracion-por-pagar",
+        "label": "Administracion por pagar",
+        "value": "$ 0"
+      }
+    ]
+  },
+  {
+    "viewport": "375",
+    "hash": "#/home",
+    "figures": [
+      {
+        "key": "socios-ciclo",
+        "label": "Socios ciclo",
+        "value": "1"
+      },
+      {
+        "key": "ahorro-recibido",
+        "label": "Ahorro recibido",
+        "value": "$ 0"
+      },
+      {
+        "key": "cuotas-esperadas-ciclo",
+        "label": "Cuotas esperadas ciclo",
+        "value": "$ 1.500.000"
+      },
+      {
+        "key": "pendiente-descriptivo",
+        "label": "Pendiente descriptivo",
+        "value": "$ 1.500.000"
+      },
+      {
+        "key": "caja-reconstruida",
+        "label": "Caja reconstruida",
+        "value": "$ 0"
+      },
+      {
+        "key": "cartera",
+        "label": "Cartera",
+        "value": "$ 0"
+      },
+      {
+        "key": "ahorro-por-pagar",
+        "label": "Ahorro por pagar",
+        "value": "$ 0"
+      },
+      {
+        "key": "bolsa-polla",
+        "label": "Bolsa polla",
+        "value": "$ 0"
+      },
+      {
+        "key": "premios-pendientes",
+        "label": "Premios pendientes",
+        "value": "$ 0"
+      },
+      {
+        "key": "fondo-utilidad-prestamos",
+        "label": "Fondo utilidad prestamos",
+        "value": "$ 0"
+      },
+      {
+        "key": "administracion-por-pagar",
+        "label": "Administracion por pagar",
+        "value": "$ 0"
+      }
+    ]
+  },
+  {
+    "viewport": "390",
+    "hash": "#/home",
+    "figures": [
+      {
+        "key": "socios-ciclo",
+        "label": "Socios ciclo",
+        "value": "1"
+      },
+      {
+        "key": "ahorro-recibido",
+        "label": "Ahorro recibido",
+        "value": "$ 0"
+      },
+      {
+        "key": "cuotas-esperadas-ciclo",
+        "label": "Cuotas esperadas ciclo",
+        "value": "$ 1.500.000"
+      },
+      {
+        "key": "pendiente-descriptivo",
+        "label": "Pendiente descriptivo",
+        "value": "$ 1.500.000"
+      },
+      {
+        "key": "caja-reconstruida",
+        "label": "Caja reconstruida",
+        "value": "$ 0"
+      },
+      {
+        "key": "cartera",
+        "label": "Cartera",
+        "value": "$ 0"
+      },
+      {
+        "key": "ahorro-por-pagar",
+        "label": "Ahorro por pagar",
+        "value": "$ 0"
+      },
+      {
+        "key": "bolsa-polla",
+        "label": "Bolsa polla",
+        "value": "$ 0"
+      },
+      {
+        "key": "premios-pendientes",
+        "label": "Premios pendientes",
+        "value": "$ 0"
+      },
+      {
+        "key": "fondo-utilidad-prestamos",
+        "label": "Fondo utilidad prestamos",
+        "value": "$ 0"
+      },
+      {
+        "key": "administracion-por-pagar",
+        "label": "Administracion por pagar",
+        "value": "$ 0"
+      }
+    ]
+  },
+  {
+    "viewport": "768",
+    "hash": "#/home",
+    "figures": [
+      {
+        "key": "socios-ciclo",
+        "label": "Socios ciclo",
+        "value": "1"
+      },
+      {
+        "key": "ahorro-recibido",
+        "label": "Ahorro recibido",
+        "value": "$ 0"
+      },
+      {
+        "key": "cuotas-esperadas-ciclo",
+        "label": "Cuotas esperadas ciclo",
+        "value": "$ 1.500.000"
+      },
+      {
+        "key": "pendiente-descriptivo",
+        "label": "Pendiente descriptivo",
+        "value": "$ 1.500.000"
+      },
+      {
+        "key": "caja-reconstruida",
+        "label": "Caja reconstruida",
+        "value": "$ 0"
+      },
+      {
+        "key": "cartera",
+        "label": "Cartera",
+        "value": "$ 0"
+      },
+      {
+        "key": "ahorro-por-pagar",
+        "label": "Ahorro por pagar",
+        "value": "$ 0"
+      },
+      {
+        "key": "bolsa-polla",
+        "label": "Bolsa polla",
+        "value": "$ 0"
+      },
+      {
+        "key": "premios-pendientes",
+        "label": "Premios pendientes",
+        "value": "$ 0"
+      },
+      {
+        "key": "fondo-utilidad-prestamos",
+        "label": "Fondo utilidad prestamos",
+        "value": "$ 0"
+      },
+      {
+        "key": "administracion-por-pagar",
+        "label": "Administracion por pagar",
+        "value": "$ 0"
+      }
+    ]
+  },
+  {
+    "viewport": "1024",
+    "hash": "#/home",
+    "figures": [
+      {
+        "key": "socios-ciclo",
+        "label": "Socios ciclo",
+        "value": "1"
+      },
+      {
+        "key": "ahorro-recibido",
+        "label": "Ahorro recibido",
+        "value": "$ 0"
+      },
+      {
+        "key": "cuotas-esperadas-ciclo",
+        "label": "Cuotas esperadas ciclo",
+        "value": "$ 1.500.000"
+      },
+      {
+        "key": "pendiente-descriptivo",
+        "label": "Pendiente descriptivo",
+        "value": "$ 1.500.000"
+      },
+      {
+        "key": "caja-reconstruida",
+        "label": "Caja reconstruida",
+        "value": "$ 0"
+      },
+      {
+        "key": "cartera",
+        "label": "Cartera",
+        "value": "$ 0"
+      },
+      {
+        "key": "ahorro-por-pagar",
+        "label": "Ahorro por pagar",
+        "value": "$ 0"
+      },
+      {
+        "key": "bolsa-polla",
+        "label": "Bolsa polla",
+        "value": "$ 0"
+      },
+      {
+        "key": "premios-pendientes",
+        "label": "Premios pendientes",
+        "value": "$ 0"
+      },
+      {
+        "key": "fondo-utilidad-prestamos",
+        "label": "Fondo utilidad prestamos",
+        "value": "$ 0"
+      },
+      {
+        "key": "administracion-por-pagar",
+        "label": "Administracion por pagar",
+        "value": "$ 0"
+      }
+    ]
+  },
+  {
+    "viewport": "1440",
+    "hash": "#/home",
+    "figures": [
+      {
+        "key": "socios-ciclo",
+        "label": "Socios ciclo",
+        "value": "1"
+      },
+      {
+        "key": "ahorro-recibido",
+        "label": "Ahorro recibido",
+        "value": "$ 0"
+      },
+      {
+        "key": "cuotas-esperadas-ciclo",
+        "label": "Cuotas esperadas ciclo",
+        "value": "$ 1.500.000"
+      },
+      {
+        "key": "pendiente-descriptivo",
+        "label": "Pendiente descriptivo",
+        "value": "$ 1.500.000"
+      },
+      {
+        "key": "caja-reconstruida",
+        "label": "Caja reconstruida",
+        "value": "$ 0"
+      },
+      {
+        "key": "cartera",
+        "label": "Cartera",
+        "value": "$ 0"
+      },
+      {
+        "key": "ahorro-por-pagar",
+        "label": "Ahorro por pagar",
+        "value": "$ 0"
+      },
+      {
+        "key": "bolsa-polla",
+        "label": "Bolsa polla",
+        "value": "$ 0"
+      },
+      {
+        "key": "premios-pendientes",
+        "label": "Premios pendientes",
+        "value": "$ 0"
+      },
+      {
+        "key": "fondo-utilidad-prestamos",
+        "label": "Fondo utilidad prestamos",
+        "value": "$ 0"
+      },
+      {
+        "key": "administracion-por-pagar",
+        "label": "Administracion por pagar",
+        "value": "$ 0"
+      }
+    ]
+  }
+]

@@ -336,15 +336,18 @@ export function App() {
 
         {activeSection === 'home' ? (
           <div className="section-view">
-            <HomeActionsPanel
+            <HomeDashboard
+              workspace={workspace}
+              cycle={cycle}
               cycleMembers={cycleMembers}
+              contributions={contributions}
+              operations={operations}
+              ledgerEntries={ledgerEntries}
               migrationReport={migrationDryRunReport}
               onSavings={() => navigate('savings')}
               onLoans={() => navigate('loans')}
               onMigration={() => navigate('more', 'migration')}
             />
-            <SavingsSummary cycleMembers={cycleMembers} contributions={contributions} />
-            <FinanceSummary operations={operations} ledgerEntries={ledgerEntries} />
           </div>
         ) : null}
 
@@ -634,7 +637,7 @@ function NavigationStyles() {
           background: var(--color-surface);
           border: 1px solid var(--color-border-strong);
           color: var(--color-primary);
-          flex: 1 1 144px;
+          flex: 1 1 118px;
           min-height: 38px;
           min-width: 0;
           white-space: normal;
@@ -734,6 +737,20 @@ function NavigationStyles() {
 
           .home-cut-panel {
             grid-template-columns: 1fr;
+          }
+        }
+
+        @media (max-width: 420px) {
+          .more-tabs {
+            gap: 6px;
+          }
+
+          .more-tab {
+            flex-basis: calc(33.333% - 4px);
+            font-size: 0.78rem;
+            line-height: 1.12;
+            padding-left: 4px;
+            padding-right: 4px;
           }
         }
       `}
@@ -837,50 +854,33 @@ function LoginPanel({ onAuthenticated }: { onAuthenticated: () => Promise<void> 
   );
 }
 
-function HomeActionsPanel({
+function HomeDashboard({
+  workspace,
+  cycle,
   cycleMembers,
+  contributions,
+  operations,
+  ledgerEntries,
   migrationReport,
   onSavings,
   onLoans,
   onMigration
 }: {
+  workspace: Workspace;
+  cycle: Cycle;
   cycleMembers: CycleMember[];
+  contributions: SavingsContribution[];
+  operations: FinancialOperation[];
+  ledgerEntries: LedgerEntry[];
   migrationReport: MigrationDryRunReport | null;
   onSavings: () => void;
   onLoans: () => void;
   onMigration: () => void;
 }) {
+  const [cutDate, setCutDate] = useState(todayCivilDate());
   const decisionCount = migrationReport?.issues.filter((issue) => issue.category === 'requires_decision').length ?? 0;
   const blockerCount = migrationReport?.issues.filter((issue) => issue.category === 'blocking').length ?? 0;
-
-  return (
-    <Panel>
-      <h2>Inicio</h2>
-      <StatusBadge tone={cycleMembers.length === 0 ? 'warning' : 'success'}>
-        {cycleMembers.length === 0 ? 'Sin socios del ciclo' : 'Ciclo con datos visibles'}
-      </StatusBadge>
-      <p className="muted">
-        {cycleMembers.length === 0
-          ? 'La base operativa no tiene socios cargados en este ciclo. Un respaldo legacy prevalidado no equivale a importacion.'
-          : `Ciclo operativo con ${cycleMembers.length} socios visibles para este usuario.`}
-      </p>
-      {migrationReport ? (
-        <InlineNotice tone={blockerCount || decisionCount ? 'warning' : 'success'}>
-          Migracion leida: {blockerCount} bloqueantes y {decisionCount} decisiones pendientes. El dry-run no publica datos operativos.
-        </InlineNotice>
-      ) : null}
-      <div className="quick-actions">
-        <Button type="button" onClick={onSavings}>Registrar aporte</Button>
-        <Button type="button" onClick={onLoans}>Registrar cobro</Button>
-        <Button type="button" variant="secondary" onClick={onSavings}>Consultar socio</Button>
-        <Button type="button" variant="quiet" onClick={onMigration}>Revisar migracion</Button>
-      </div>
-    </Panel>
-  );
-}
-
-function SavingsSummary({ cycleMembers, contributions }: { cycleMembers: CycleMember[]; contributions: SavingsContribution[] }) {
-  const totals = useMemo(() => {
+  const savingsTotals = useMemo(() => {
     const contributed = contributions.reduce((sum, item) => sum.plus(item.amount), new Decimal(0));
     const expected = cycleMembers.reduce((sum, item) => {
       const activeMonths = item.participation_end_month - item.participation_start_month + 1;
@@ -888,84 +888,194 @@ function SavingsSummary({ cycleMembers, contributions }: { cycleMembers: CycleMe
     }, new Decimal(0));
     return { contributed, expected, pending: Decimal.max(expected.minus(contributed), 0) };
   }, [cycleMembers, contributions]);
+  const balances = useMemo(() => buildBalancesAtCut(operations, ledgerEntries, cutDate), [cutDate, ledgerEntries, operations]);
+
+  const financialPosition: DashboardMetric[] = [
+    {
+      key: 'caja-reconstruida',
+      label: 'Caja reconstruida',
+      value: formatCop(balances.get('cash') ?? 0),
+      detail: 'Partidas cash publicadas hasta el corte.',
+      tone: 'primary'
+    },
+    {
+      key: 'cartera',
+      label: 'Cartera',
+      value: formatCop(balances.get('loans_receivable') ?? 0),
+      detail: 'Capital pendiente reconstruido por ledger.',
+      tone: 'secondary'
+    },
+    {
+      key: 'ahorro-por-pagar',
+      label: 'Ahorro por pagar',
+      value: formatCop(new Decimal(0).minus(balances.get('savings_liability') ?? 0)),
+      detail: 'Obligacion de ahorro frente a socios.',
+      tone: 'warning'
+    },
+    {
+      key: 'premios-pendientes',
+      label: 'Premios pendientes',
+      value: formatCop(new Decimal(0).minus(balances.get('prizes_payable') ?? 0)),
+      detail: 'Premios reconocidos aun no pagados.',
+      tone: 'warning'
+    }
+  ];
+
+  const savingsTracking: DashboardMetric[] = [
+    {
+      key: 'socios-ciclo',
+      label: 'Socios ciclo',
+      value: String(cycleMembers.length),
+      detail: 'Participaciones visibles para este usuario.',
+      tone: 'neutral'
+    },
+    {
+      key: 'ahorro-recibido',
+      label: 'Ahorro recibido',
+      value: formatCop(savingsTotals.contributed),
+      detail: 'Aportes registrados en el ciclo.',
+      tone: 'primary'
+    },
+    {
+      key: 'cuotas-esperadas-ciclo',
+      label: 'Cuotas esperadas ciclo',
+      value: formatCop(savingsTotals.expected),
+      detail: 'Suma descriptiva de cuotas por rango.',
+      tone: 'neutral'
+    },
+    {
+      key: 'pendiente-descriptivo',
+      label: 'Pendiente descriptivo',
+      value: formatCop(savingsTotals.pending),
+      detail: 'No equivale por si solo a deuda exigible.',
+      tone: 'warning'
+    }
+  ];
+
+  const complementary: DashboardMetric[] = [
+    {
+      key: 'bolsa-polla',
+      label: 'Bolsa polla',
+      value: formatCop(new Decimal(0).minus(balances.get('polla_pool') ?? 0)),
+      detail: 'Fondo restringido de actividades de polla.',
+      tone: 'neutral'
+    },
+    {
+      key: 'fondo-utilidad-prestamos',
+      label: 'Fondo utilidad prestamos',
+      value: formatCop(new Decimal(0).minus(balances.get('member_loan_profit_fund') ?? 0)),
+      detail: 'Fondo pendiente de reglas de reparto/pago.',
+      tone: 'secondary'
+    },
+    {
+      key: 'administracion-por-pagar',
+      label: 'Administracion por pagar',
+      value: formatCop(new Decimal(0).minus(balances.get('admin_payable') ?? 0)),
+      detail: 'Obligacion administrativa registrada.',
+      tone: 'neutral'
+    }
+  ];
 
   return (
-    <section className="metrics">
-      <div>
-        <span>Socios ciclo</span>
-        <strong>{cycleMembers.length}</strong>
+    <div className="dashboard">
+      <Panel className="dashboard-header">
+        <div>
+          <p className="eyebrow">{workspace.name}</p>
+          <h2>Inicio financiero</h2>
+          <p className="muted">Ciclo {cycle.year}: {cycle.name}. Los indicadores son reconstruidos desde operaciones publicadas y aportes visibles.</p>
+        </div>
+        <Field label="Fecha de corte" hint="Aplica a saldos reconstruidos desde ledger.">
+          <input type="date" value={cutDate} onChange={(event) => setCutDate(event.target.value)} />
+        </Field>
+      </Panel>
+
+      {cycleMembers.length === 0 ? (
+        <InlineNotice tone="warning">
+          La base operativa no tiene socios cargados en este ciclo. Un respaldo legacy prevalidado no equivale a importacion.
+        </InlineNotice>
+      ) : null}
+
+      {migrationReport ? (
+        <InlineNotice tone={blockerCount || decisionCount ? 'warning' : 'success'}>
+          Migracion leida: {blockerCount} bloqueantes y {decisionCount} decisiones pendientes. El dry-run no publica datos operativos.
+        </InlineNotice>
+      ) : null}
+
+      <DashboardSection title="Posicion financiera" description="Saldos al corte. No se suman como disponible unico porque mezclan activos, obligaciones y fondos restringidos.">
+        <MetricGrid items={financialPosition} />
+      </DashboardSection>
+
+      <div className="dashboard-two-column">
+        <DashboardSection title="Seguimiento del ahorro" description="Aportes y cuotas esperadas del ciclo con interpretacion descriptiva.">
+          <MetricGrid items={savingsTracking} compact />
+        </DashboardSection>
+
+        <Panel className="dashboard-actions">
+          <div>
+            <p className="eyebrow">Operaciones frecuentes</p>
+            <h3>Acciones del ciclo</h3>
+            <p className="muted">Atajos existentes. No crean operaciones por si solos.</p>
+          </div>
+          <div className="quick-actions dashboard-action-grid">
+            <Button type="button" onClick={onSavings}>Registrar aporte</Button>
+            <Button type="button" onClick={onLoans}>Registrar cobro</Button>
+            <Button type="button" variant="secondary" onClick={onSavings}>Consultar socio</Button>
+            <Button type="button" variant="quiet" onClick={onMigration}>Revisar migracion</Button>
+          </div>
+        </Panel>
       </div>
-      <div>
-        <span>Ahorro recibido</span>
-        <strong>{formatCop(totals.contributed)}</strong>
+
+      <DashboardSection title="Informacion complementaria" description="Fondos u obligaciones que ayudan a leer el ciclo, sin convertirlos en saldo libre.">
+        <MetricGrid items={complementary} compact />
+      </DashboardSection>
+    </div>
+  );
+}
+
+function buildBalancesAtCut(operations: FinancialOperation[], ledgerEntries: LedgerEntry[], cutDate: string) {
+  const operationsById = new Map(operations.map((operation) => [operation.id, operation]));
+  const byAccount = new Map<string, Decimal>();
+  for (const entry of ledgerEntries) {
+    const operation = operationsById.get(entry.operation_id);
+    if (operation && operation.effective_date > cutDate) {
+      continue;
+    }
+    byAccount.set(entry.account, (byAccount.get(entry.account) ?? new Decimal(0)).plus(entry.amount));
+  }
+  return byAccount;
+}
+
+type DashboardMetric = {
+  key: string;
+  label: string;
+  value: string;
+  detail: string;
+  tone: 'primary' | 'secondary' | 'warning' | 'neutral';
+};
+
+function DashboardSection({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+  return (
+    <section className="dashboard-section">
+      <div className="dashboard-section-heading">
+        <h3>{title}</h3>
+        <p className="muted">{description}</p>
       </div>
-      <div>
-        <span>Cuotas esperadas ciclo</span>
-        <strong>{formatCop(totals.expected)}</strong>
-      </div>
-      <div>
-        <span>Pendiente descriptivo</span>
-        <strong>{formatCop(totals.pending)}</strong>
-      </div>
+      {children}
     </section>
   );
 }
 
-function FinanceSummary({ operations, ledgerEntries }: { operations: FinancialOperation[]; ledgerEntries: LedgerEntry[] }) {
-  const [cutDate, setCutDate] = useState(todayCivilDate());
-  const balances = useMemo(() => {
-    const operationsById = new Map(operations.map((operation) => [operation.id, operation]));
-    const byAccount = new Map<string, Decimal>();
-    for (const entry of ledgerEntries) {
-      const operation = operationsById.get(entry.operation_id);
-      if (operation && operation.effective_date > cutDate) {
-        continue;
-      }
-      byAccount.set(entry.account, (byAccount.get(entry.account) ?? new Decimal(0)).plus(entry.amount));
-    }
-    return byAccount;
-  }, [cutDate, ledgerEntries, operations]);
-
+function MetricGrid({ items, compact = false }: { items: DashboardMetric[]; compact?: boolean }) {
   return (
-    <>
-      <section className="panel home-cut-panel">
-        <h2>Resumen al corte</h2>
-        <label>
-          Corte
-          <input type="date" value={cutDate} onChange={(event) => setCutDate(event.target.value)} />
-        </label>
-      </section>
-      <section className="metrics">
-        <div>
-          <span>Caja reconstruida</span>
-          <strong>{formatCop(balances.get('cash') ?? 0)}</strong>
-        </div>
-        <div>
-          <span>Cartera</span>
-          <strong>{formatCop(balances.get('loans_receivable') ?? 0)}</strong>
-        </div>
-        <div>
-          <span>Ahorro por pagar</span>
-          <strong>{formatCop(new Decimal(0).minus(balances.get('savings_liability') ?? 0))}</strong>
-        </div>
-        <div>
-          <span>Bolsa polla</span>
-          <strong>{formatCop(new Decimal(0).minus(balances.get('polla_pool') ?? 0))}</strong>
-        </div>
-        <div>
-          <span>Premios pendientes</span>
-          <strong>{formatCop(new Decimal(0).minus(balances.get('prizes_payable') ?? 0))}</strong>
-        </div>
-        <div>
-          <span>Fondo utilidad prestamos</span>
-          <strong>{formatCop(new Decimal(0).minus(balances.get('member_loan_profit_fund') ?? 0))}</strong>
-        </div>
-        <div>
-          <span>Administracion por pagar</span>
-          <strong>{formatCop(new Decimal(0).minus(balances.get('admin_payable') ?? 0))}</strong>
-        </div>
-      </section>
-    </>
+    <div className={compact ? 'dashboard-metrics dashboard-metrics-compact' : 'dashboard-metrics'}>
+      {items.map((item) => (
+        <article key={item.key} className={`metric-card metric-card-${item.tone}`} data-figure-key={item.key}>
+          <span data-figure-label>{item.label}</span>
+          <strong data-figure-value>{item.value}</strong>
+          <small>{item.detail}</small>
+        </article>
+      ))}
+    </div>
   );
 }
 
