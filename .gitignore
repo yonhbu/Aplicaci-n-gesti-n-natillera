@@ -39,3 +39,6 @@ incoming/
 /natillera-2026-netlify.zip
 
 /docs/ux/evidence/
+/migrations/
+/config.toml
+/templates/
