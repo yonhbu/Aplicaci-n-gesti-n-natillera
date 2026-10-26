@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { buildMigrationDryRun, type MigrationDryRunReport, type MigrationMapping } from '../src/domain/migrationD';
 import { buildBlockDExport } from '../src/data/export';
 import { loadLocalEnv } from './load-local-env';
+import { execFileSync } from 'node:child_process';
 
 type Command = 'fixture' | 'dry-run' | 'stage' | 'publish-trial' | 'export' | 'restore-check';
 type AdminClient = any;
@@ -212,8 +213,24 @@ async function restoreCheck() {
   const exportPath = valueArg('export');
   const raw = await readFile(exportPath, 'utf8');
   const parsed = JSON.parse(raw) as { format?: string; data?: Record<string, unknown>; migration?: Record<string, unknown> };
+  if (parsed.format === 'natillera-manager.workspace.v3') {
+    if (!args.has('to-test-db')) throw new Error('La verificacion de workspace.v3 exige restauracion real en TEST vacio: use --to-test-db.');
+    const recoveryArgs = ['scripts/recovery-test.mjs', 'restore-json', '--file', exportPath];
+    const output = optionalValueArg('out');
+    if (output) recoveryArgs.push('--out', output);
+    execFileSync(process.execPath, recoveryArgs, { stdio: 'inherit' });
+    return;
+  }
+  if (parsed.format === 'natillera-manager.abcd-fin.v2') {
+    throw new Error('Este respaldo v2 no contiene un inventario integral verificable. Genere workspace.v3; cambiar la etiqueta de version no recupera colecciones omitidas.');
+  }
   if (parsed.format !== 'natillera-manager.abcd.v1' || !parsed.data) {
     throw new Error('El archivo no es un export ABC+D valido.');
+  }
+  for (const key of ['loans', 'loanPayments', 'pollaActivities', 'pollaPrizes', 'bankAccounts', 'memberSettlements', 'loanProfitDistributions']) {
+    if (Array.isArray(parsed.data[key]) && (parsed.data[key] as unknown[]).length) {
+      throw new Error('El ensayo legacy solo restaura socios, aportes y ledger. Para recuperar los modulos financieros completos genere workspace.v3.');
+    }
   }
   const restored = {
     format: parsed.format,

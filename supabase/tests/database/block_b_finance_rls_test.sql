@@ -101,8 +101,8 @@ select is((select net_amount from public.polla_prizes where idempotency_key = 'p
 select is((select admin_commission from public.polla_prizes where idempotency_key = 'polla-prize-001'), 5000::numeric, 'comision fija 5000');
 
 select lives_ok(
-  $$ select public.pay_polla_prize((select id from public.polla_prizes where idempotency_key = 'polla-prize-001'), 'polla-pay-001', '2026-10-06') $$,
-  'paga premio separado'
+  $$ select public.credit_polla_prize_to_capital((select id from public.polla_prizes where idempotency_key = 'polla-prize-001'), 'polla-credit-001', '2026-10-06') $$,
+  'FIN-02: el premio se acredita al capital del ganador'
 );
 
 set local request.jwt.claim.sub = '01000000-0000-0000-0000-000000000002';

@@ -1,0 +1,65 @@
+begin;
+create extension if not exists pgtap;
+select no_plan();
+set local natillera.civil_today='2026-10-20';
+insert into auth.users(id,aud,role,email,created_at,updated_at)
+values('a2000000-0000-4000-8000-000000000001','authenticated','authenticated','completion-unit@example.test',now(),now());
+insert into public.workspaces(id,name) values('a2000000-0000-4000-8000-000000000002','Synthetic completion');
+insert into public.workspace_users(workspace_id,user_id,role)
+values('a2000000-0000-4000-8000-000000000002','a2000000-0000-4000-8000-000000000001','admin');
+insert into public.cycles(id,workspace_id,year,name,starts_on,closes_on,status,settlement_rules_version)
+values('a2000000-0000-4000-8000-000000000003','a2000000-0000-4000-8000-000000000002',2026,'Synthetic completion','2026-01-01','2026-12-05','active','fin03-2026');
+insert into public.members(id,workspace_id,display_name)
+values('a2000000-0000-4000-8000-000000000004','a2000000-0000-4000-8000-000000000002','Completion synthetic');
+insert into public.cycle_members(id,workspace_id,cycle_id,member_id,monthly_quota,participates_in_polla)
+values('a2000000-0000-4000-8000-000000000005','a2000000-0000-4000-8000-000000000002','a2000000-0000-4000-8000-000000000003','a2000000-0000-4000-8000-000000000004',70000,true);
+set local request.jwt.claim.sub='a2000000-0000-4000-8000-000000000001';
+select public.create_bank_account('a2000000-0000-4000-8000-000000000003','Synthetic completion bank','','');
+select public.register_savings_contribution('a2000000-0000-4000-8000-000000000005','completion-saving',69932.72,'2026-10-01',2026,10,'cash','manual');
+set local role authenticated;
+create temp table first_quote as select public.preview_member_settlement('a2000000-0000-4000-8000-000000000005','2026-10-20',0,0,0) q;
+select is((select(q->>'net')::numeric from first_quote),-67.28::numeric,'negative settlement reproduces exact shortfall');
+select throws_ok($$select public.confirm_member_settlement('a2000000-0000-4000-8000-000000000005','completion-too-early','2026-10-20',0,0,0,(select q->>'preview_hash' from first_quote))$$,null,null,'negative settlement stays blocked');
+select throws_ok($$select public.record_settlement_completion('a2000000-0000-4000-8000-000000000005','completion-zero','2026-10-20',0,(select id from bank_accounts where display_name='Synthetic completion bank'),'Synthetic zero','2026-10-20',0,0,0,(select q->>'preview_hash'from first_quote))$$,null,null,'zero receipt rejected');
+select throws_ok($$select public.record_settlement_completion('a2000000-0000-4000-8000-000000000005','completion-negative','2026-10-20',-1,(select id from bank_accounts where display_name='Synthetic completion bank'),'Synthetic negative','2026-10-20',0,0,0,(select q->>'preview_hash'from first_quote))$$,null,null,'negative receipt rejected');
+select throws_ok($$select public.record_settlement_completion('a2000000-0000-4000-8000-000000000005','completion-precision','2026-10-20',0.001,(select id from bank_accounts where display_name='Synthetic completion bank'),'Synthetic precision','2026-10-20',0,0,0,(select q->>'preview_hash'from first_quote))$$,null,null,'sub-cent receipt rejected');
+select throws_ok($$select public.record_settlement_completion('a2000000-0000-4000-8000-000000000005','completion-nan','2026-10-20','NaN'::numeric,(select id from bank_accounts where display_name='Synthetic completion bank'),'Synthetic nan','2026-10-20',0,0,0,(select q->>'preview_hash'from first_quote))$$,null,null,'NaN receipt rejected');
+select throws_ok($$select public.record_settlement_completion('a2000000-0000-4000-8000-000000000005','completion-future','2026-10-21',10,(select id from bank_accounts where display_name='Synthetic completion bank'),'Synthetic future','2026-10-21',0,0,0,(select q->>'preview_hash'from first_quote))$$,'P0001','Fecha del pago complementario invalida; debe estar recibida al corte.','future receipt rejected');
+select throws_ok($$select public.record_settlement_completion('a2000000-0000-4000-8000-000000000005','completion-late','2026-10-20',10,(select id from bank_accounts where display_name='Synthetic completion bank'),'Synthetic late','2026-10-19',0,0,0,(select q->>'preview_hash'from first_quote))$$,'P0001','Fecha del pago complementario invalida; debe estar recibida al corte.','receipt after chosen cut rejected');
+select throws_ok($$select public.record_settlement_completion('a2000000-0000-4000-8000-000000000005','completion-no-reference','2026-10-20',10,(select id from bank_accounts where display_name='Synthetic completion bank'),' ','2026-10-20',0,0,0,(select q->>'preview_hash'from first_quote))$$,'P0001','Indique la referencia del dinero recibido.','blank reference rejected');
+select throws_ok($$select public.record_settlement_completion('a2000000-0000-4000-8000-000000000005','completion-wrong-bank','2026-10-20',10,'ffffffff-0000-4000-8000-000000000001','Synthetic wrong bank','2026-10-20',0,0,0,(select q->>'preview_hash'from first_quote))$$,'P0001','Cuenta bancaria no disponible.','unrelated bank rejected');
+savepoint partial_receipt;
+select public.record_settlement_completion('a2000000-0000-4000-8000-000000000005','completion-partial','2026-10-20',10,(select id from bank_accounts where display_name='Synthetic completion bank'),'Synthetic partial','2026-10-20',0,0,0,(select q->>'preview_hash'from first_quote));
+select is((public.preview_member_settlement('a2000000-0000-4000-8000-000000000005','2026-10-20',0,0,0)->>'net')::numeric,-57.28::numeric,'partial receipt keeps remaining shortfall open');
+select is((public.preview_member_settlement('a2000000-0000-4000-8000-000000000005','2026-10-19',0,0,0)->>'net')::numeric,-67.28::numeric,'future-to-cut receipt excluded');
+rollback to partial_receipt;
+savepoint exact_receipt;
+select public.record_settlement_completion('a2000000-0000-4000-8000-000000000005','completion-exact','2026-10-20',67.28,(select id from bank_accounts where display_name='Synthetic completion bank'),'Synthetic exact','2026-10-20',0,0,0,(select q->>'preview_hash'from first_quote));
+select lives_ok($$select public.confirm_member_settlement('a2000000-0000-4000-8000-000000000005','completion-zero-confirm','2026-10-20',0,0,0,public.preview_member_settlement('a2000000-0000-4000-8000-000000000005','2026-10-20',0,0,0)->>'preview_hash')$$,'exact shortfall coverage confirms without inventing payout');
+select is((select transfer_amount from member_settlements where idempotency_key='completion-zero-confirm'),0::numeric,'exact coverage has no money to deliver');
+select is((select count(*)from member_settlement_payments where cycle_id='a2000000-0000-4000-8000-000000000003'),0::bigint,'no automatic zero payment created');
+rollback to exact_receipt;
+select has_function('public','record_settlement_completion',array['uuid','text','date','numeric','uuid','text','date','numeric','numeric','numeric','text'],'completion requires verified receipt and fresh calculation');
+select lives_ok($$select public.record_settlement_completion('a2000000-0000-4000-8000-000000000005','completion-receipt','2026-10-20',68,(select id from bank_accounts where display_name='Synthetic completion bank'),'Synthetic bank receipt','2026-10-20',0,0,0,(select q->>'preview_hash' from first_quote))$$,'supplementary receipt can exceed exact shortfall');
+create temp table second_quote as select public.preview_member_settlement('a2000000-0000-4000-8000-000000000005','2026-10-20',0,0,0) q;
+select is((select(q->>'net')::numeric from second_quote),0.72::numeric,'overpayment is retained for the member');
+select is((select(q->>'transfer_amount')::numeric from second_quote),0.72::numeric,'supplementary balance is not rounded away');
+select is((select(q->>'capital')::numeric from second_quote),69932.72::numeric,'completion never becomes monthly savings or earns interest');
+select is((select sum(amount)from ledger_entries where cycle_id='a2000000-0000-4000-8000-000000000003'and account='settlement_completion_liability'),-68::numeric,'receipt has dedicated liability');
+select lives_ok($$select public.record_settlement_completion('a2000000-0000-4000-8000-000000000005','completion-receipt','2026-10-20',68,(select id from bank_accounts where display_name='Synthetic completion bank'),'Synthetic bank receipt','2026-10-20',0,0,0,(select q->>'preview_hash' from first_quote))$$,'exact retry succeeds after balances changed');
+select throws_ok($$select public.record_settlement_completion('a2000000-0000-4000-8000-000000000005','completion-receipt','2026-10-20',69,(select id from bank_accounts where display_name='Synthetic completion bank'),'Synthetic bank receipt','2026-10-20',0,0,0,(select q->>'preview_hash' from first_quote))$$,null,null,'changed retry rejected');
+select is((select count(*)from financial_operations where cycle_id='a2000000-0000-4000-8000-000000000003'and operation_type='member_settlement_completion'),1::bigint,'double submit creates one receipt');
+select throws_ok($$select public.record_settlement_completion('a2000000-0000-4000-8000-000000000005','completion-unneeded','2026-10-20',10,(select id from bank_accounts where display_name='Synthetic completion bank'),'Synthetic unneeded','2026-10-20',0,0,0,(select q->>'preview_hash'from second_quote))$$,'P0001','Esta cuenta final no tiene faltante; no registre un pago complementario.','cannot post unnecessary receipts');
+select throws_ok($$select public.confirm_member_settlement('a2000000-0000-4000-8000-000000000005','completion-stale','2026-10-20',0,0,0,(select q->>'preview_hash'from first_quote))$$,null,null,'receipt invalidates old preview');
+savepoint undo_receipt;
+select lives_ok($$select public.reverse_financial_operation((select id from financial_operations where idempotency_key='completion-receipt'),'completion-undo','2026-10-20','Synthetic correction')$$,'unconsumed receipt can be annulled');
+select is((public.preview_member_settlement('a2000000-0000-4000-8000-000000000005','2026-10-20',0,0,0)->>'net')::numeric,-67.28::numeric,'annulment restores original shortfall exactly');
+rollback to undo_receipt;
+select lives_ok($$select public.confirm_member_settlement('a2000000-0000-4000-8000-000000000005','completion-confirm','2026-10-20',0,0,0,(select q->>'preview_hash'from second_quote))$$,'covered settlement confirms atomically');
+select is((select sum(amount)from ledger_entries where cycle_id='a2000000-0000-4000-8000-000000000003'and account='settlement_completion_liability'),0::numeric,'completion liability consumed once at confirmation');
+select throws_ok($$select public.reverse_financial_operation((select id from financial_operations where idempotency_key='completion-receipt'),'completion-late-undo','2026-10-20','Synthetic correction')$$,null,null,'cannot annul receipt used in confirmed settlement');
+select lives_ok($$select public.pay_member_settlement((select id from member_settlements where idempotency_key='completion-confirm'),'completion-pay','2026-10-20','bank',(select id from bank_accounts where display_name='Synthetic completion bank'),'Synthetic refund')$$,'surplus can be paid with cents intact');
+select is((select sum(amount)from ledger_entries where cycle_id='a2000000-0000-4000-8000-000000000003'and account='cash'and liquidity_location='bank'),67.28::numeric,'bank receives actual deposit minus exact surplus refund');
+select is((select count(*)from(select operation_id from ledger_entries where cycle_id='a2000000-0000-4000-8000-000000000003'group by 1 having sum(amount)<>0)s),0::bigint,'all new and old operations balance');
+select * from finish();
+rollback;

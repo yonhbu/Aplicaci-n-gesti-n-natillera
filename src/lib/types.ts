@@ -11,6 +11,7 @@ export interface Cycle {
   starts_on: string;
   closes_on: string;
   status: 'active' | 'closed' | 'archived';
+  settlement_rules_version?: string | null;
 }
 
 export interface Member {
@@ -35,12 +36,14 @@ export interface CycleMember {
   participates_in_savings: boolean;
   participates_in_polla: boolean;
   participates_in_loan_profit: boolean;
+  economic_mode?: 'collective' | 'fixed_yield' | null;
   notes: string | null;
   member?: Member;
 }
 
 export interface SavingsContribution {
   id: string;
+  status?: 'posted' | 'reversed';
   workspace_id: string;
   cycle_id: string;
   member_id: string;
@@ -84,9 +87,14 @@ export interface LedgerEntry {
   amount: string;
   liquidity_location: 'unknown' | 'bank' | 'cash';
   bank_account_id: string | null;
+  member_id?: string | null;
+  loan_id?: string | null;
+  polla_activity_id?: string | null;
+  prize_id?: string | null;
 }
 
 export interface LoanContract {
+  settlement_applications?: LoanSettlementEffect[];
   id: string;
   workspace_id: string;
   cycle_id: string;
@@ -114,6 +122,8 @@ export interface LoanContract {
 }
 
 export interface LoanSchedule {
+  closed_by_settlement?: boolean;
+  source_status?: 'projected' | 'paid' | 'cancelled';
   id: string;
   loan_id: string;
   installment_number: number;
@@ -123,10 +133,13 @@ export interface LoanSchedule {
   status: 'projected' | 'paid' | 'cancelled';
   legacy_source_key: string | null;
   legacy_declared_paid: boolean;
+  principal_paid?: string;
+  interest_paid?: string;
 }
 
 export interface LoanPayment {
   id: string;
+  operation_id?: string;
   loan_id: string;
   payment_date: string;
   amount: string;
@@ -134,6 +147,16 @@ export interface LoanPayment {
   interest_amount: string;
   kind: 'regular' | 'prepayment';
   status: 'posted' | 'reversed';
+}
+
+export interface LoanSettlementEffect {
+  id: string;
+  loan_id: string;
+  settlement_id: string;
+  principal_amount: string;
+  interest_amount: string;
+  effective_date: string;
+  reversal_date: string | null;
 }
 
 export interface PollaActivity {
@@ -144,10 +167,12 @@ export interface PollaActivity {
   period_month: number;
   name: string;
   status: 'open' | 'awarded' | 'closed';
+  cancelled_at?: string | null;
 }
 
 export interface PollaContribution {
   id: string;
+  operation_id?: string;
   workspace_id: string;
   cycle_id: string;
   activity_id: string;
@@ -286,5 +311,37 @@ export interface LoanProfitDistributionAllocation {
   payment_id: string | null;
   paid_at: string | null;
   payment_reference: string | null;
+  created_at: string;
+}
+
+export interface MemberCapitalCredit {
+  reversed_at?: string | null;
+  id: string;
+  workspace_id: string;
+  cycle_id: string;
+  cycle_member_id: string;
+  member_id: string;
+  source_type: 'polla_prize' | 'bank_yield';
+  prize_id: string | null;
+  distribution_id: string | null;
+  operation_id: string;
+  amount: string;
+  effective_date: string;
+  created_at: string;
+}
+
+export interface BankYieldDistribution {
+  id: string;
+  workspace_id: string;
+  cycle_id: string;
+  operation_id: string | null;
+  cut_date: string;
+  net_received: string;
+  savers_reserved: string;
+  pool_amount: string;
+  beneficiary_count: number;
+  per_member_amount: string;
+  residual_to_admin: string;
+  status: 'confirmed' | 'reversed';
   created_at: string;
 }

@@ -64,7 +64,7 @@ export function buildNatilleraExport(input: {
       ? 'Modulos implementados en A+B+C: workspace, ciclo, socios, aportes, ledger, prestamos, pollas, banco, conciliacion, liquidaciones y reparto de utilidad.'
       : 'Modulos implementados en A+B: workspace, ciclo, socios, aportes de ahorro, operaciones financieras, prestamos, cobros, pollas y premios.',
     warning: 'No es respaldo completo del legacy ni incluye comprobantes privados, importacion productiva ni despliegue.',
-    data: input
+    data: {...input,loans:input.loans.map(({settlement_applications: _effects,...loan})=>loan),loanSchedules:input.loanSchedules.map(({closed_by_settlement: _closed,...schedule})=>schedule)}
   };
 }
 
@@ -92,9 +92,10 @@ export function buildBlockDExport(input: {
   migrationDryRun?: MigrationDryRunReport | null;
   migrationBatch?: Record<string, unknown> | null;
   attachmentManifest?: Record<string, unknown>[] | null;
+  finExtensions?: Record<string, unknown[]> | null;
 }) {
   return {
-    format: 'natillera-manager.abcd.v1',
+    format: input.finExtensions ? 'natillera-manager.abcd-fin.v2' : 'natillera-manager.abcd.v1',
     exportedAt: new Date().toISOString(),
     scope: 'A+B+C mas metadatos de migracion D: staging, mapeos, incidencias, conciliacion y manifiesto de adjuntos disponibles.',
     warning: 'No contiene secretos, usuarios Auth con credenciales ni fuentes legacy reales. Los comprobantes solo cuentan como restaurables si hay bytes y hash en el manifiesto.',
@@ -115,9 +116,10 @@ export function buildBlockDExport(input: {
       contributions: input.contributions,
       operations: input.operations,
       ledgerEntries: input.ledgerEntries,
-      loans: input.loans,
+      // Settlement effects are a joined read model, not columns to restore into loan_contracts.
+      loans: input.loans.map(({settlement_applications: _effects, ...loan}) => loan),
       loanPayments: input.loanPayments,
-      loanSchedules: input.loanSchedules,
+      loanSchedules: input.loanSchedules.map(({closed_by_settlement: _closed,...schedule})=>schedule),
       pollaActivities: input.pollaActivities,
       pollaContributions: input.pollaContributions,
       pollaPrizes: input.pollaPrizes,
@@ -128,7 +130,8 @@ export function buildBlockDExport(input: {
       loanProfitDistributions: input.loanProfitDistributions,
       loanProfitDistributionPayments: input.loanProfitDistributionPayments,
       loanProfitDistributionPolicies: input.loanProfitDistributionPolicies ?? [],
-      loanProfitDistributionAllocations: input.loanProfitDistributionAllocations ?? []
+      loanProfitDistributionAllocations: input.loanProfitDistributionAllocations ?? [],
+      ...(input.finExtensions ?? {})
     }
   };
 }

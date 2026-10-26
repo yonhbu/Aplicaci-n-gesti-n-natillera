@@ -18,6 +18,8 @@ export async function listSavingsContributions(cycleId: string): Promise<Savings
       .from('savings_contributions')
       .select('*')
       .eq('cycle_id', cycleId)
+      .neq('status', 'reversed')
+      .order('effective_date', { ascending: false })
       .order('created_at', { ascending: false })
       .order('id', { ascending: false })
       .range(from, to);

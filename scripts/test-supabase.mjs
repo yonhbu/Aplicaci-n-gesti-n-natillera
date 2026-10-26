@@ -3,6 +3,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import './prepare-test-supabase.mjs';
 
+// The CLI TCP test runner can terminate connections on a migrated Windows host.
+// Keep pgTAP and its complete plan validation inside the guarded TEST container.
+if (process.argv[2] === 'rls') {
+  await import('./run-sql-tests-local.mjs');
+  process.exit(process.exitCode ?? 0);
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..');
 const workdir = '.supabase-test';

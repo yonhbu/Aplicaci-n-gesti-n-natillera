@@ -80,7 +80,7 @@ npm run legacy:import-2026 -- --json <ruta-json-real-fuera-de-git> --csv <ruta-c
 
 ## Configuracion local
 
-Copia `.env.example` a `.env.local` y ajusta valores locales. No uses correos reales de terceros en pruebas. El bootstrap crea usuarios Auth confirmados, workspace, membresia admin y ciclo; no envia invitaciones.
+Para DEV recuperado, inicia Supabase local y ejecuta `npm run dev`: resuelve la URL y clave pública en memoria y no abre dotenv del PC anterior. `npm run dev:test` apunta al TEST independiente. [Recuperación y consolidación del equipo](docs/MIGRACION_PC_Y_DEV_2026-10-20.md). No uses correos reales de terceros en pruebas. El bootstrap es para instalaciones vacías; no repetirlo ni añadir datos demo a la base operativa restaurada.
 
 ## Seguridad
 

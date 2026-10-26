@@ -12,6 +12,7 @@ const adminEmail = 'e2e-admin@example.test';
 const routes = [
   { name: 'home', hash: '#/home' },
   { name: 'ahorros', hash: '#/savings' },
+  ...(suite === 'ux-05' ? [{ name: 'prestamos', hash: '#/loans' }] : []),
   { name: 'movimientos', hash: '#/more/movements' }
 ];
 const viewports = [
@@ -65,6 +66,10 @@ async function captureAll(baseUrl) {
   const savingsSnapshots = [];
   try {
     await login(page, baseUrl);
+    if (suite === 'ux-05') {
+      await seedUx05Loans(page, baseUrl);
+      await writeFile(path.join(outRoot, 'loan-records.json'), JSON.stringify(await readUx05Loans(), null, 2));
+    }
     for (const viewport of viewports) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       for (const route of routes) {
@@ -73,6 +78,9 @@ async function captureAll(baseUrl) {
         await page.waitForTimeout(250);
         const fileName = `${route.name}-${viewport.name}.png`;
         await page.screenshot({ path: path.join(outRoot, fileName), fullPage: false });
+        if (route.name === 'prestamos') {
+          await page.screenshot({ path: path.join(outRoot, `prestamos-${viewport.name}-full.png`), fullPage: true });
+        }
         measurements.push(await measureOverflow(page, route.name, viewport.name));
         if (route.name === 'home') {
           figures.push(await readDashboardFigures(page, viewport.name));
@@ -93,10 +101,116 @@ async function captureAll(baseUrl) {
     '',
     `Fecha generada: ${new Date().toISOString()}`,
     'Entorno: TEST descartable con dataset sintetico fijo.',
-    'Rutas: home, ahorros, movimientos.',
+    `Rutas: ${routes.map((route) => route.name).join(', ')}.`,
     'Viewports: 320, 375, 390, 768, 1024, 1440.',
     ''
   ].join('\n'));
+}
+
+async function seedUx05Loans(page, baseUrl) {
+  await page.goto(`${baseUrl}/#/loans`);
+  const loansPanel = page.locator('section.loans-page');
+  await loansPanel.waitFor();
+  const newLoanSheet = page.locator('section[role="dialog"]').filter({ has: page.getByRole('heading', { name: 'Nuevo préstamo' }) });
+  const paySheet = page.locator('section[role="dialog"]').filter({ has: page.getByRole('heading', { name: 'Registrar pago' }) });
+  const loanRow = (text) => loansPanel.locator('[data-loan-row]').filter({ hasText: text });
+  const fillContract = async ({ borrower, external, principal, method, rate, term }) => {
+    await loansPanel.getByRole('button', { name: 'Nuevo préstamo' }).click();
+    await newLoanSheet.getByLabel('Socio deudor').selectOption(borrower ? { label: borrower } : '');
+    if (!borrower) await newLoanSheet.getByLabel('Deudor externo').fill(external);
+    await newLoanSheet.getByLabel('Principal').fill(principal);
+    await newLoanSheet.getByLabel('Método', { exact: true }).selectOption(method);
+    await newLoanSheet.getByLabel('Base tasa').selectOption('MONTHLY_FIXED');
+    await newLoanSheet.getByLabel('Tasa %').fill(rate);
+    await newLoanSheet.getByLabel('Plazo meses').fill(term);
+    await newLoanSheet.getByLabel('Fecha desembolso').fill('2026-09-06');
+    await newLoanSheet.getByRole('button', { name: 'Crear contrato' }).click();
+    await newLoanSheet.waitFor({ state: 'detached' });
+  };
+  const disburse = async (text) => {
+    await loanRow(text).getByRole('button', { name: 'Desembolsar' }).click();
+    const disburseSheet = page.locator('section[role="dialog"]').filter({ has: page.getByRole('heading', { name: 'Desembolsar préstamo' }) });
+    await disburseSheet.getByRole('button', { name: 'Confirmar desembolso' }).click();
+    await disburseSheet.waitFor({ state: 'detached' });
+    await loanRow(text).filter({ hasNotText: 'Borrador' }).waitFor();
+  };
+  const openPayment = async (text) => {
+    await loanRow(text).getByRole('button', { name: 'Ver detalle' }).click();
+    await loansPanel.locator('[data-loan-detail]').getByRole('button', { name: 'Registrar pago' }).click();
+    await paySheet.waitFor();
+  };
+  const payManual = async (text, amount, capital, interest) => {
+    await openPayment(text);
+    await paySheet.getByRole('button', { name: 'Otro monto' }).click();
+    await paySheet.getByLabel('Pago', { exact: true }).fill(amount);
+    await paySheet.getByLabel('Capital', { exact: true }).fill(capital);
+    await paySheet.getByLabel('Interés', { exact: true }).fill(interest);
+    await paySheet.getByLabel('Fecha del pago').fill('2026-10-06');
+    await paySheet.getByRole('button', { name: 'Guardar pago' }).click();
+    await paySheet.waitFor({ state: 'detached' });
+  };
+  await fillContract({ borrower: 'Socio UX 02B con nombre largo sintetico', principal: '9.500.000', method: 'fixed_interest', rate: '5', term: '12' });
+  await disburse('Socio UX 02B con nombre largo sintetico');
+  await payManual('Socio UX 02B', '1.500.000', '1.000.000', '500.000');
+
+  await fillContract({ external: 'Deudor externo UX05 nombre sintetico muy largo', principal: '2.300.000', method: 'interest_only', rate: '0', term: '3' });
+  await disburse('Deudor externo UX05');
+  await payManual('Deudor externo UX05', '2.300.000', '2.300.000', '0');
+  await fillContract({ external: 'Borrador UX05 externo', principal: '750.000', method: 'amortized', rate: '12', term: '6' });
+  await openPayment('Socio UX 02B');
+  await paySheet.getByRole('button', { name: 'Pagar todo' }).click();
+  await paySheet.getByText(/Para cancelar hoy/).waitFor();
+  await writeFile(path.join(outRoot, 'loan-quote.txt'), await paySheet.getByText(/Para cancelar hoy/).textContent());
+  await paySheet.getByRole('button', { name: 'Cancelar' }).click();
+
+  await fillContract({ external: 'Prepago confirmado UX05 sintetico', principal: '1.200.000', method: 'fixed_interest', rate: '5', term: '3' });
+  await disburse('Prepago confirmado UX05 sintetico');
+  await openPayment('Prepago confirmado UX05 sintetico');
+  await paySheet.getByRole('button', { name: 'Pagar todo' }).click();
+  await paySheet.getByText(/Para cancelar hoy/).waitFor();
+  await paySheet.getByRole('button', { name: 'Confirmar pago total' }).click();
+  await paySheet.waitFor({ state: 'detached' });
+}
+
+async function selectLoanOption(select, borrower) {
+  const value = await select.locator('option').filter({ hasText: borrower }).first().getAttribute('value');
+  if (!value) throw new Error(`Prestamo TEST no encontrado para ${borrower}.`);
+  await select.selectOption(value);
+}
+
+async function readUx05Loans() {
+  const env = await readEnvFile('.env.test.local');
+  if (env.SUPABASE_URL !== 'http://127.0.0.1:55421' || !env.SUPABASE_SECRET_KEY) {
+    throw new Error('Snapshot de prestamos limitado a TEST local.');
+  }
+  const admin = createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY, { auth: { persistSession: false } });
+  const { data: contracts, error: contractError } = await admin.from('loan_contracts')
+    .select('id, borrower_member_id, external_borrower_name, principal, method, rate_unit, rate_value, term_months, start_date, status, legacy_paid_capital_amount, legacy_paid_interest_amount');
+  if (contractError) throw new Error(contractError.message);
+  const ids = (contracts ?? []).map((loan) => loan.id);
+  const { data: payments, error: paymentError } = await admin.from('loan_payments')
+    .select('loan_id, payment_date, amount, capital_amount, interest_amount, kind, status')
+    .in('loan_id', ids);
+  if (paymentError) throw new Error(paymentError.message);
+  const memberIds = (contracts ?? []).map((loan) => loan.borrower_member_id).filter(Boolean);
+  const { data: members, error: memberError } = await admin.from('members').select('id, display_name').in('id', memberIds);
+  if (memberError) throw new Error(memberError.message);
+  const names = new Map((members ?? []).map((member) => [member.id, member.display_name]));
+  return (contracts ?? []).map((loan) => ({
+    borrower: loan.borrower_member_id ? names.get(loan.borrower_member_id) : loan.external_borrower_name,
+    principal: loan.principal,
+    method: loan.method,
+    rateUnit: loan.rate_unit,
+    rateValue: loan.rate_value,
+    termMonths: loan.term_months,
+    startDate: loan.start_date,
+    status: loan.status,
+    legacyPaidCapital: loan.legacy_paid_capital_amount,
+    legacyPaidInterest: loan.legacy_paid_interest_amount,
+    payments: (payments ?? []).filter((payment) => payment.loan_id === loan.id)
+      .map(({ loan_id: _, ...payment }) => payment)
+      .sort((a, b) => a.payment_date.localeCompare(b.payment_date))
+  })).sort((a, b) => a.borrower.localeCompare(b.borrower));
 }
 
 async function readSavingsSnapshot(page, viewport) {

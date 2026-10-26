@@ -2,7 +2,9 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  // DEV and audit servers can coexist without replacing each other's prebundles.
+  cacheDir: `node_modules/.vite-${mode}`,
   plugins: [
     react(),
     VitePWA({
@@ -12,8 +14,8 @@ export default defineConfig({
         name: 'Natillera Manager',
         short_name: 'Natillera',
         description: 'Gestion privada de ahorro de natillera.',
-        theme_color: '#14532d',
-        background_color: '#f8fafc',
+        theme_color: '#003f36',
+        background_color: '#f4f7f6',
         display: 'standalone',
         icons: [
           {
@@ -30,8 +32,17 @@ export default defineConfig({
       }
     })
   ],
+  // Audit exports and captured pages are not application entry points.
+  optimizeDeps: {
+    entries: ['index.html']
+  },
   server: {
-    port: 5176
+    host: '127.0.0.1',
+    port: 5176,
+    strictPort: true,
+    watch: {
+      ignored: ['**/incoming/**', '**/.playwright-mcp/**', '**/.supabase-test/**', '**/supabase/.temp/**', '**/test-results/**', '**/playwright-report/**']
+    }
   },
   preview: {
     port: 4176
@@ -54,4 +65,4 @@ export default defineConfig({
       }
     }
   }
-});
+}));

@@ -44,149 +44,234 @@ test('OTP, socio, aporte, prestamo, polla, recarga y usuario sin membresia', asy
   await expect(panelByHeading(page, 'Inicio')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Aportes de ahorro' })).not.toBeVisible();
 
-  await goMain(page, 'Ahorros');
-  const savingsPanel = panelByHeading(page, 'Aportes de ahorro');
-  await expect(savingsPanel).toBeVisible();
+  // Socios es una sección principal propia: el alta de socios vive allí, no en Ahorros (móvil).
+  await goMain(page, 'Socios');
+  await expect(page.getByRole('heading', { name: 'Socios', exact: true })).toBeVisible();
 
+  await page.getByRole('button', { name: 'Nuevo socio', exact: true }).click();
   await page.getByLabel('Nombre visible').fill(memberName);
   await page.getByLabel('Cuota mensual').fill('100.000');
   await page.getByRole('button', { name: 'Crear socio' }).click();
   await expect(page.getByText('Socio guardado.')).toBeVisible();
   await expect(page.getByRole('cell', { name: memberName })).toBeVisible();
 
+  await goMain(page, 'Ahorros');
+  await expect(page.getByRole('heading', { name: 'Ahorros', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Registrar aporte', exact: true }).click();
+  const savingsPanel = panelByHeading(page, 'Registrar aporte');
+  await expect(savingsPanel).toBeVisible();
   await savingsPanel.getByLabel('Socio del aporte').selectOption({ label: memberName });
   await savingsPanel.getByLabel('Monto recibido').fill('50.000');
   await savingsPanel.getByLabel('Fecha efectiva').fill('2026-09-23');
   await savingsPanel.getByLabel('Mes aplicado').selectOption('10');
-  await savingsPanel.getByRole('button', { name: 'Registrar aporte' }).click();
+  await savingsPanel.getByRole('button', { name: 'Guardar aporte' }).click();
   await expect(page.getByText('Aporte confirmado por la base.')).toBeVisible();
+  await expect(savingsPanel).toHaveCount(0);
+  // El detalle por socio (último aporte, progreso) se consulta en Socios; Ahorros muestra el explorador mensual.
+  await goMain(page, 'Socios');
   let memberRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: memberName }) });
-  await expect(memberRow.getByText(/2026-10:.*50\.000/)).toBeVisible();
+  await expect(memberRow.getByText(/Octubre.*50\.000/)).toBeVisible();
 
   await page.reload();
-  await expect(savingsPanel).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Socios', exact: true })).toBeVisible();
   await expect(page.getByRole('cell', { name: memberName })).toBeVisible();
   memberRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: memberName }) });
-  await expect(memberRow.getByText(/2026-10:.*50\.000/)).toBeVisible();
+  await expect(memberRow.getByText(/Octubre.*50\.000/)).toBeVisible();
 
-  await goMain(page, 'Prestamos');
-  const loansPanel = panelByHeading(page, 'Prestamos y cobros');
+  await goMain(page, 'Préstamos');
+  const loansPanel = page.locator('section.loans-page');
   await expect(loansPanel).toBeVisible();
-  const loanField = (label: string) => fieldInPanel(loansPanel, label);
-  await loansPanel.getByLabel('Socio deudor').selectOption({ label: memberName });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  await loansPanel.getByRole('button', { name: 'Nuevo préstamo' }).click();
+  const newLoan = panelByHeading(page, 'Nuevo préstamo');
+  const loanField = (label: string) => fieldInPanel(newLoan, label);
+  await newLoan.getByLabel('Socio deudor').selectOption({ label: memberName });
   await loanField('Principal').fill('500.000');
-  await loanField('Metodo').selectOption('fixed_interest');
+  await loanField('Método').selectOption('fixed_interest');
   await loanField('Base tasa').selectOption('MONTHLY_FIXED');
   await loanField('Tasa %').fill('5');
   await loanField('Plazo meses').fill('1');
   await loanField('Fecha desembolso').fill('2026-09-06');
-  await loansPanel.getByRole('button', { name: 'Crear contrato' }).click();
-  await expect(page.getByText('Operacion de prestamo confirmada.')).toBeVisible();
-  await loansPanel.locator('p').filter({ hasText: new RegExp(`${escapeRegExp(memberName)}.*draft`) }).getByRole('button', { name: 'Desembolsar' }).click();
-  await expect(page.getByText('Operacion de prestamo confirmada.')).toBeVisible();
-  await expect(loansPanel.getByText(new RegExp(`${escapeRegExp(memberName)}.*cartera.*500\\.000`))).toBeVisible();
+  await newLoan.getByRole('button', { name: 'Crear contrato' }).click();
+  await expect(page.getByText('Operación de préstamo confirmada.')).toBeVisible();
+  await expect(newLoan).toHaveCount(0);
+  const loanRow = loansPanel.locator('[data-loan-row]').filter({ hasText: memberName });
+  await expect(loanRow).toContainText('Borrador');
+  await loanRow.getByRole('button', { name: 'Desembolsar' }).click();
+  const disburseSheet = panelByHeading(page, 'Desembolsar préstamo');
+  await expect(fieldInPanel(disburseSheet, 'Fecha del desembolso')).toHaveValue('2026-09-06');
+  await disburseSheet.getByRole('button', { name: 'Confirmar desembolso' }).click();
+  await expect(disburseSheet).toHaveCount(0);
+  await expect(loanRow).not.toContainText('Borrador');
+  await expect(loanRow).toContainText('500.000');
 
-  await selectOptionContaining(loanField('Prestamo'), memberName);
-  await loanField('Pago').fill('25.000');
-  await loanField('Capital').fill('0');
-  await loanField('Interes').fill('25.000');
-  await loanField('Fecha cobro').fill('2026-10-06');
-  await loansPanel.getByRole('button', { name: 'Registrar cobro' }).click();
-  await expect(page.getByText('Operacion de prestamo confirmada.')).toBeVisible();
-  await expect(loansPanel.getByText(new RegExp(`${escapeRegExp(memberName)}.*interes cobrado.*25\\.000`))).toBeVisible();
+  await loanRow.getByRole('button', { name: 'Ver detalle' }).click();
+  const loanDetail = loansPanel.locator('[data-loan-detail]');
+  await expect(loanDetail.getByText('Capital pendiente')).toBeVisible();
+  await loanDetail.getByRole('button', { name: 'Registrar pago' }).click();
+  const paySheet = panelByHeading(page, 'Registrar pago');
+  const payField = (label: string) => fieldInPanel(paySheet, label);
+  await paySheet.getByRole('button', { name: 'Otro monto' }).click();
+  await payField('Pago').fill('25.000');
+  await payField('Capital').fill('0');
+  await payField('Interés').fill('25.000');
+  await payField('Fecha del pago').fill('2026-10-06');
+  await paySheet.getByRole('button', { name: 'Registrar Pago' }).click();
+  await expect(page.getByText('Operación de préstamo confirmada.')).toBeVisible();
+  await expect(paySheet).toHaveCount(0);
+  await expect(loanDetail.locator('[data-loan-payment-row]')).toHaveCount(1);
+  await expect(loanDetail).toContainText('25.000');
 
-  await goMain(page, 'Polla');
-  const pollaPanel = panelByHeading(page, 'Pollas y premios');
+  await loansPanel.getByLabel('Buscar contrato').fill('NO-EXISTE-UX05');
+  await expect(loansPanel.getByText('No hay contratos que coincidan con el filtro.')).toBeVisible();
+  await loansPanel.getByLabel('Buscar contrato').fill(memberName);
+
+  await loanDetail.getByRole('button', { name: 'Registrar pago' }).click();
+  await paySheet.getByRole('button', { name: 'Otro monto' }).click();
+  await payField('Pago').fill('30.000');
+  await payField('Capital').fill('0');
+  await payField('Interés').fill('25.000');
+  await expect(paySheet.getByRole('button', { name: 'Registrar Pago' })).toBeDisabled();
+  await paySheet.getByRole('button', { name: 'Pagar todo' }).click();
+  await expect(paySheet.getByText(/Para cancelar/)).toBeVisible();
+  await expect(paySheet.getByRole('button', { name: 'Confirmar pago total' })).toBeEnabled();
+  await paySheet.getByRole('button', { name: 'Confirmar pago total' }).click();
+  await expect(paySheet).toHaveCount(0);
+  await loansPanel.getByRole('button', { name: /^Todos/ }).click();
+  await expect(loansPanel.locator('[data-loan-row]').filter({ hasText: memberName })).toContainText('Pagado');
+  await expect(loanDetail.locator('[data-loan-payment-row]')).toHaveCount(2);
+
+  await goPolla(page);
+  const pollaPanel = page.locator('section.polla-page');
   await expect(pollaPanel).toBeVisible();
-  const pollaField = (label: string) => fieldInPanel(pollaPanel, label);
-  await pollaPanel.getByLabel('Nombre actividad').fill(`Polla E2E ${unique}`);
-  await pollaField('Mes').selectOption('10');
-  await pollaPanel.getByRole('button', { name: 'Crear actividad' }).click();
-  await expect(page.getByText('Operacion de polla confirmada.')).toBeVisible();
+  await pollaPanel.getByRole('button', { name: 'Nueva polla' }).click();
+  const newPolla = panelByHeading(page, 'Nueva polla');
+  await fieldInPanel(newPolla, 'Nombre actividad').fill(`Polla E2E ${unique}`);
+  await fieldInPanel(newPolla, 'Mes').selectOption('10');
+  await newPolla.getByRole('button', { name: 'Crear actividad' }).click();
+  await expect(page.getByText('Operación de polla confirmada.')).toBeVisible();
+  await pollaPanel.getByRole('button', { name: 'Octubre', exact: true }).click();
+  await pollaPanel.getByRole('button', { name: `Polla E2E ${unique}`, exact: true }).click();
 
-  await selectOptionContaining(pollaField('Actividad'), `Polla E2E ${unique}`);
-  await pollaField('Participante / ganador').selectOption({ label: memberName });
-  await pollaField('Aporte polla').fill('10.000');
-  await pollaField('Fecha aporte').fill('2026-10-06');
-  await pollaPanel.getByRole('button', { name: 'Registrar aporte' }).click();
-  await expect(page.getByText('Operacion de polla confirmada.')).toBeVisible();
+  await pollaPanel.getByRole('button', { name: 'Registrar aporte', exact: true }).click();
+  const pollaSheet = panelByHeading(page, 'Aporte de polla');
+  await fieldInPanel(pollaSheet, 'Participante').selectOption({ label: memberName });
+  await fieldInPanel(pollaSheet, 'Aporte polla').fill('10.000');
+  await fieldInPanel(pollaSheet, 'Fecha aporte').fill('2026-10-06');
+  await pollaSheet.getByRole('button', { name: 'Guardar aporte' }).click();
+  await expect(pollaSheet).toHaveCount(0);
 
-  await pollaField('Premio bruto').fill('40.000');
-  await pollaField('Fecha premio').fill('2026-10-06');
-  await pollaPanel.getByRole('button', { name: 'Asignar premio' }).click();
-  await expect(pollaPanel.getByText(/neto.*35\.000/).first()).toBeVisible();
-  await pollaPanel.getByRole('button', { name: 'Pagar neto' }).first().click();
-  await expect(pollaPanel.getByText(/paid/).first()).toBeVisible();
+  await pollaPanel.getByRole('button', { name: 'Asignar ganador' }).click();
+  const prizeSheet = panelByHeading(page, 'Asignar ganador');
+  await fieldInPanel(prizeSheet, 'Ganador').selectOption({ label: memberName });
+  await fieldInPanel(prizeSheet, 'Premio bruto').fill('40.000');
+  await fieldInPanel(prizeSheet, 'Fecha premio').fill('2026-10-06');
+  await prizeSheet.getByRole('button', { name: 'Asignar premio' }).click();
+  await expect(prizeSheet).toHaveCount(0);
+  const prizeRow = pollaPanel.locator('[data-prize-row]').filter({ hasText: memberName });
+  await expect(prizeRow.first()).toContainText(/Acreditado .*35\.000/);
+  await expect(prizeRow.getByRole('button', { name: /Pagar/ })).toHaveCount(0);
 
   await goMore(page, 'Banco y caja');
-  const bankPanel = panelByHeading(page, 'Banco y conciliacion');
+  const bankPanel = page.locator('section.bank-page');
   await expect(bankPanel).toBeVisible();
-  const bankField = (label: string) => fieldInPanel(bankPanel, label);
-  await bankField('Cuenta').fill(`Banco E2E ${unique}`);
-  await bankField('Identificador').fill('****2026');
-  await bankPanel.getByRole('button', { name: 'Crear cuenta' }).click();
-  await expect(page.getByText('Operacion bancaria confirmada.')).toBeVisible();
-  await bankField('Cuenta operativa').selectOption({ label: `Banco E2E ${unique}` });
-  await bankField('Fecha').fill('2026-10-01');
-  await bankField('Monto').fill('1.000.000');
-  await bankField('Referencia').fill('apertura E2E ficticia');
-  await bankPanel.getByRole('button', { name: 'Registrar apertura' }).click();
-  await expect(page.getByText('Operacion bancaria confirmada.')).toBeVisible();
-  await bankField('Fecha').fill('2026-10-02');
-  await bankField('Interes bruto').fill('10.000');
-  await bankPanel.getByRole('button', { name: 'Registrar interes' }).click();
-  await expect(page.getByText('Operacion bancaria confirmada.')).toBeVisible();
-  await bankField('Fecha').fill('2026-10-03');
-  await bankField('Comision').fill('1.000');
-  await bankPanel.getByRole('button', { name: 'Registrar comision' }).click();
-  await expect(page.getByText('Operacion bancaria confirmada.')).toBeVisible();
-  await bankField('Fecha').fill('2026-10-04');
-  await bankField('Monto').fill('100.000');
-  await bankPanel.getByRole('button', { name: 'Trasladar a efectivo' }).click();
-  await expect(bankPanel.getByText(new RegExp(`Banco E2E ${unique}.*909\\.000`))).toBeVisible();
-  await bankField('Fecha').fill('2026-10-06');
-  await bankField('Saldo externo').fill('908.500');
-  await bankPanel.getByRole('button', { name: 'Conciliar corte' }).click();
-  await expect(bankPanel.getByText(/diferencia.*500/).first()).toBeVisible();
+  const openBankSheet = async (button: string, title: string) => {
+    await bankPanel.getByRole('button', { name: button, exact: true }).click();
+    const sheet = panelByHeading(page, title);
+    await expect(sheet).toBeVisible();
+    return { sheet, field: (label: string) => fieldInPanel(sheet, label) };
+  };
+  const accountButton = (await bankPanel.getByRole('button', { name: 'Crear cuenta', exact: true }).isVisible()) ? 'Crear cuenta' : 'Nueva cuenta';
+  const account = await openBankSheet(accountButton, 'Nueva cuenta bancaria');
+  await account.field('Nombre de la cuenta').fill(`Banco E2E ${unique}`);
+  await account.field('Identificador').fill('****2026');
+  await account.sheet.getByRole('button', { name: 'Guardar cuenta' }).click();
+  await expect(page.getByText('Operación bancaria confirmada.')).toBeVisible();
+  const accountChip = bankPanel.getByRole('button', { name: `Banco E2E ${unique}`, exact: true });
+  if (await accountChip.isVisible().catch(() => false)) await accountChip.click();
 
-  await goMain(page, 'Ahorros');
+  const opening = await openBankSheet('Saldo inicial', 'Saldo inicial de la cuenta');
+  await opening.field('Monto').fill('1.000.000');
+  await opening.field('Fecha').fill('2026-10-01');
+  await opening.field('Referencia').fill('apertura E2E ficticia');
+  await opening.sheet.getByRole('button', { name: 'Registrar saldo inicial' }).click();
+  await expect(opening.sheet).toHaveCount(0);
+
+  const interest = await openBankSheet('Intereses', 'Intereses del banco');
+  await interest.field('Interés bruto').fill('10.000');
+  await interest.field('Fecha').fill('2026-10-02');
+  await interest.sheet.getByRole('button', { name: 'Registrar intereses' }).click();
+  await expect(interest.sheet).toHaveCount(0);
+
+  const fee = await openBankSheet('Comisión', 'Comisión bancaria');
+  await fee.field('Monto').fill('1.000');
+  await fee.field('Fecha').fill('2026-10-03');
+  await fee.sheet.getByRole('button', { name: 'Registrar comisión' }).click();
+  await expect(fee.sheet).toHaveCount(0);
+
+  const transfer = await openBankSheet('Traslado', 'Traslado de dinero');
+  await transfer.sheet.getByRole('button', { name: 'Banco → efectivo' }).click();
+  await transfer.field('Monto').fill('100.000');
+  await transfer.field('Fecha').fill('2026-10-04');
+  await transfer.sheet.getByRole('button', { name: 'Registrar traslado' }).click();
+  await expect(transfer.sheet).toHaveCount(0);
+  await expect(bankPanel.locator('.value-row').filter({ hasText: `Banco E2E ${unique}` })).toContainText('909.000');
+
+  const reconcile = await openBankSheet('Conciliar', 'Conciliar con el extracto');
+  await reconcile.field('Fecha del corte').fill('2026-10-06');
+  await reconcile.field('Saldo del extracto').fill('908.500');
+  await reconcile.field('Saldo inicial verificado').fill('1.000.000');
+  await reconcile.field('Fecha del saldo inicial').fill('2026-10-01');
+  await expect(reconcile.sheet.getByText('Diferencia')).toBeVisible();
+  await reconcile.sheet.getByRole('button', { name: 'Guardar conciliación' }).click();
+  await expect(reconcile.sheet).toHaveCount(0);
+  await expect(bankPanel.locator('[data-reconciliation-row]').first()).toContainText(/Diferencia.*500/);
+
+  await goMain(page, 'Socios');
   const settlementName = `Liquidacion E2E ${unique}`;
+  await page.getByRole('button', { name: 'Nuevo socio', exact: true }).click();
   await page.getByLabel('Nombre visible').fill(settlementName);
   await page.getByLabel('Cuota mensual').fill('100.000');
   await page.getByRole('button', { name: 'Crear socio' }).click();
   await expect(page.getByText('Socio guardado.')).toBeVisible();
+  await goMain(page, 'Ahorros');
+  await page.getByRole('button', { name: 'Registrar aporte', exact: true }).click();
+  await expect(savingsPanel).toBeVisible();
   await savingsPanel.getByLabel('Socio del aporte').selectOption({ label: settlementName });
   await savingsPanel.getByLabel('Monto recibido').fill('100.000');
   await savingsPanel.getByLabel('Fecha efectiva').fill('2026-09-23');
   await savingsPanel.getByLabel('Mes aplicado').selectOption('10');
-  await savingsPanel.getByRole('button', { name: 'Registrar aporte' }).click();
+  await savingsPanel.getByRole('button', { name: 'Guardar aporte' }).click();
   await expect(page.getByText('Aporte confirmado por la base.')).toBeVisible();
 
-  await goMore(page, 'Liquidaciones');
-  const settlementPanel = panelByHeading(page, 'Liquidaciones');
+  await goMore(page, 'Cuentas finales de socios');
+  const settlementPanel = page.locator('section.settlement-page');
   await expect(settlementPanel).toBeVisible();
-  const settlementField = (label: string) => fieldInPanel(settlementPanel, label);
-  await settlementField('Socio').selectOption({ label: settlementName });
-  await settlementField('Corte').fill('2026-10-06');
-  await settlementField('Cuota anual').fill('0');
-  await settlementField('Penalidad').fill('0');
-  await settlementPanel.getByRole('button', { name: 'Previsualizar' }).click();
-  await expect(settlementPanel.getByText(/Transferencia/)).toBeVisible();
-  await settlementPanel.getByRole('button', { name: 'Confirmar' }).click();
-  await expect(page.getByText('Liquidacion actualizada.')).toBeVisible();
-  await selectOptionContaining(settlementField('Liquidacion'), settlementName);
-  await settlementField('Cuenta pago').selectOption({ label: `Banco E2E ${unique}` });
-  await settlementField('Referencia pago').fill('pago liquidacion E2E ficticio');
-  await settlementPanel.getByRole('button', { name: 'Registrar pago' }).click();
-  await expect(page.getByText('Liquidacion actualizada.')).toBeVisible();
+  await settlementPanel.getByRole('button').filter({ hasText: settlementName }).click();
+  const settlementSheet = panelByHeading(page, `Cuenta final de ${settlementName}`);
+  const settlementField = (label: string) => fieldInPanel(settlementSheet, label);
+  await settlementField('Fecha de corte').fill('2026-10-06');
+  await settlementSheet.getByRole('button', { name: 'Calcular' }).click();
+  await expect(settlementSheet.getByText(/Transferencia redondeada/)).toBeVisible();
+  await settlementSheet.getByRole('button', { name: 'Confirmar cuenta final' }).click();
+  await expect(page.getByText('Liquidación actualizada.')).toBeVisible();
+  await settlementSheet.getByRole('button', { name: 'Banco', exact: true }).click();
+  await settlementField('Cuenta').selectOption({ label: `Banco E2E ${unique}` });
+  await settlementField('Referencia').fill('pago liquidacion E2E ficticio');
+  await settlementSheet.getByRole('button', { name: /^Pagar / }).click();
+  await expect(page.getByText('Liquidación actualizada.')).toBeVisible();
+  await expect(settlementPanel.getByRole('button').filter({ hasText: settlementName })).toContainText('Pagada');
 
   await goMore(page, 'Respaldos');
   const jsonDownloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Descargar respaldo JSON' }).click();
+  await page.getByRole('button', { name: 'Descargar respaldo' }).click();
   const jsonDownload = await jsonDownloadPromise;
   const jsonText = await downloadText(jsonDownload);
-  const parsed = JSON.parse(jsonText) as { format: string; data: { cycleMembers: unknown[]; contributions: unknown[]; loans: unknown[] } };
-  expect(parsed.format).toBe('natillera-manager.abcd.v1');
+  const parsed = JSON.parse(jsonText) as { format: string; data: Record<string, unknown[]> };
+  expect(parsed.format).toBe('natillera-manager.abcd-fin.v2');
+  for (const key of ['memberCapitalCredits', 'bankYieldDistributions', 'loanProfitPeriodDistributions', 'loanProfitPeriodAllocations', 'finRulesActivations']) {
+    expect(Array.isArray(parsed.data[key]), key).toBe(true);
+  }
   expect(parsed.data.cycleMembers.length).toBeGreaterThanOrEqual(2);
   expect(parsed.data.contributions.length).toBeGreaterThanOrEqual(2);
   expect(parsed.data.loans.length).toBeGreaterThanOrEqual(1);
@@ -207,40 +292,40 @@ test('OTP, socio, aporte, prestamo, polla, recarga y usuario sin membresia', asy
 test('navegacion principal oculta modulos inactivos y conserva hash', async ({ page }) => {
   await page.goto('/#/loans');
   await loginWithOtp(page, adminEmail);
-  await expect(panelByHeading(page, 'Prestamos y cobros')).toBeVisible();
+  await expect(page.locator('section.loans-page')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Aportes de ahorro' })).not.toBeVisible();
 
-  await goMain(page, 'Mas');
-  await goMore(page, 'Migracion');
-  await expect(panelByHeading(page, 'Migracion D: prevalidacion y dry-run')).toBeVisible();
-  await page.getByLabel('JSON respaldo navegador').setInputFiles({
+  await goMain(page, 'Más');
+  await goMore(page, 'Migración');
+  await expect(panelByHeading(page, 'Migración de datos históricos')).toBeVisible();
+  await page.getByLabel('Respaldo JSON de la app anterior').setInputFiles({
     name: 'legacy-e2e.json',
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify({ socios: [{ id: 'FORMULA', nombre: '=texto protegido' }], cuotas: [] }))
   });
-  await page.getByRole('button', { name: 'Prevalidar sin escrituras' }).click();
-  await expect(page.getByText('Hash fuente')).toBeVisible();
+  await page.getByRole('button', { name: 'Revisar archivos' }).click();
+  await expect(page.getByText('Huella del archivo')).toBeAttached();
 
-  await goMore(page, 'Respaldos');
   const migrationDownloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Descargar informe de migracion' }).click();
+  await page.getByRole('button', { name: 'Descargar informe de revisión' }).click();
   const migrationDownload = await migrationDownloadPromise;
   const migrationText = await downloadText(migrationDownload);
   const migrationParsed = JSON.parse(migrationText) as { format: string; issues: unknown[] };
   expect(migrationParsed.format).toBe('natillera-manager.migration-d.dry-run.v1');
   expect(Array.isArray(migrationParsed.issues)).toBe(true);
 
-  await goMore(page, 'Migracion');
+  await goMore(page, 'Respaldos');
+  await goMore(page, 'Migración');
   await page.reload();
-  await expect(panelByHeading(page, 'Migracion D: prevalidacion y dry-run')).toBeVisible();
+  await expect(panelByHeading(page, 'Migración de datos históricos')).toBeVisible();
   await page.goBack();
-  await expect(panelByHeading(page, 'Respaldos y exportaciones')).toBeVisible();
+  await expect(panelByHeading(page, 'Respaldos')).toBeVisible();
   await page.goBack();
-  await expect(panelByHeading(page, 'Migracion D: prevalidacion y dry-run')).toBeVisible();
+  await expect(panelByHeading(page, 'Migración de datos históricos')).toBeVisible();
   await page.goBack();
-  await expect(panelByHeading(page, 'Banco y conciliacion')).toBeVisible();
+  await expect(page.locator('section.bank-page')).toBeVisible();
   await page.goBack();
-  await expect(panelByHeading(page, 'Prestamos y cobros')).toBeVisible();
+  await expect(page.locator('section.loans-page')).toBeVisible();
 });
 
 test('shell responsive mantiene navegacion accionable sin solapamientos', async ({ page }) => {
@@ -261,19 +346,19 @@ test('shell responsive mantiene navegacion accionable sin solapamientos', async 
     await expect(panelByHeading(page, 'Inicio')).toBeVisible();
     await expectShellNavigationClear(page);
 
-    await goMain(page, 'Mas');
-    await goMore(page, 'Migracion');
-    await expect(panelByHeading(page, 'Migracion D: prevalidacion y dry-run')).toBeVisible();
+    await goMain(page, 'Más');
+    await goMore(page, 'Migración');
+    await expect(panelByHeading(page, 'Migración de datos históricos')).toBeVisible();
     await expectShellNavigationClear(page);
 
     await page.reload();
-    await expect(panelByHeading(page, 'Migracion D: prevalidacion y dry-run')).toBeVisible();
+    await expect(panelByHeading(page, 'Migración de datos históricos')).toBeVisible();
     await expectShellNavigationClear(page);
 
     await goMore(page, 'Respaldos');
-    await expect(panelByHeading(page, 'Respaldos y exportaciones')).toBeVisible();
+    await expect(panelByHeading(page, 'Respaldos')).toBeVisible();
     await page.goBack();
-    await expect(panelByHeading(page, 'Migracion D: prevalidacion y dry-run')).toBeVisible();
+    await expect(panelByHeading(page, 'Migración de datos históricos')).toBeVisible();
   }
 });
 
@@ -305,9 +390,20 @@ async function goMain(page: Page, name: string) {
   await clickNavigationButton(button);
 }
 
+// Polla es una sección principal solo en escritorio (≥ 980 px); en móvil se llega desde Más → Polla.
+async function goPolla(page: Page) {
+  const direct = page.getByRole('navigation', { name: 'Secciones principales' }).getByRole('button', { name: 'Polla', exact: true });
+  if (await direct.isVisible().catch(() => false)) {
+    await clickNavigationButton(direct);
+    return;
+  }
+  await goMain(page, 'Más');
+  await clickNavigationButton(page.getByRole('navigation', { name: 'Secciones de mas opciones' }).getByRole('button', { name: 'Polla', exact: true }));
+}
+
 async function goMore(page: Page, name: string) {
   if (!(await page.getByRole('button', { name: 'Banco y caja' }).isVisible().catch(() => false))) {
-    await goMain(page, 'Mas');
+    await goMain(page, 'Más');
   }
   const button = page.getByRole('navigation', { name: 'Secciones de mas opciones' }).getByRole('button', { name, exact: true });
   await clickNavigationButton(button);
@@ -327,7 +423,7 @@ async function expectShellNavigationClear(page: Page) {
 
     const lastMainButton = page.locator('main button:visible').last();
     if (await lastMainButton.count()) {
-      await lastMainButton.scrollIntoViewIfNeeded();
+      await lastMainButton.evaluate((element) => element.scrollIntoView({ block: 'center' }));
       const buttonBox = await lastMainButton.boundingBox();
       if (buttonBox) {
         if (navBox.y < viewport.height / 2) {
@@ -346,6 +442,8 @@ async function expectShellNavigationClear(page: Page) {
     }
     for (const button of Array.from(nav.querySelectorAll('button'))) {
       const rect = button.getBoundingClientRect();
+      // Pestañas exclusivas de escritorio (Polla) están ocultas en móvil: no cuentan como navegación visible.
+      if (rect.width === 0 && rect.height === 0) continue;
       const x = rect.left + rect.width / 2;
       const y = rect.top + rect.height / 2;
       const target = document.elementFromPoint(x, y);

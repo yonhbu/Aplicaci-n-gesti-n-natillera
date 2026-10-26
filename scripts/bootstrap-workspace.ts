@@ -9,7 +9,7 @@ const workspaceName = process.env.NATILLERA_WORKSPACE_NAME;
 const cycleName = process.env.NATILLERA_CYCLE_NAME ?? 'Natillera 2026';
 const cycleYear = Number(process.env.NATILLERA_CYCLE_YEAR ?? '2026');
 const cycleStart = process.env.NATILLERA_CYCLE_START ?? '2026-01-01';
-const cycleClose = process.env.NATILLERA_CYCLE_CLOSE ?? '2026-12-15';
+const cycleClose = process.env.NATILLERA_CYCLE_CLOSE ?? '2026-12-05';
 const adminEmails = (process.env.NATILLERA_ADMIN_EMAILS ?? '')
   .split(',')
   .map((email) => email.trim().toLowerCase())

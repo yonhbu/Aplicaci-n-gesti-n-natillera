@@ -31,7 +31,7 @@ values
 
 insert into public.cycle_members (id, workspace_id, cycle_id, member_id, monthly_quota, participates_in_polla, participates_in_loan_profit)
 values
-  ('43000000-0000-0000-0000-000000000001', '13000000-0000-0000-0000-000000000001', '23000000-0000-0000-0000-000000000001', '33000000-0000-0000-0000-000000000001', 100000, true, true),
+  ('43000000-0000-0000-0000-000000000001', '13000000-0000-0000-0000-000000000001', '23000000-0000-0000-0000-000000000001', '33000000-0000-0000-0000-000000000001', 100000, false, true),
   ('43000000-0000-0000-0000-000000000002', '13000000-0000-0000-0000-000000000001', '23000000-0000-0000-0000-000000000001', '33000000-0000-0000-0000-000000000002', 100000, true, true),
   ('43000000-0000-0000-0000-000000000003', '13000000-0000-0000-0000-000000000001', '23000000-0000-0000-0000-000000000001', '33000000-0000-0000-0000-000000000003', 100000, false, true);
 
@@ -137,12 +137,12 @@ begin
   perform public.confirm_loan_disbursement(loan_id, 'edna-p013-disb-c', '2026-09-06');
 end $$;
 
-select is(((public.preview_member_settlement('43000000-0000-0000-0000-000000000002', '2026-10-06', 20000, 50000, 0))->>'pending_net_prizes')::numeric, 135000::numeric, 'Edna tiene tres premios netos pendientes por 135000');
-select is(((public.preview_member_settlement('43000000-0000-0000-0000-000000000002', '2026-10-06', 20000, 50000, 0))->>'debts')::numeric, 1074506::numeric, 'Edna deudas compensables incluyen P005, P013 e interes acordado');
-select is(((public.preview_member_settlement('43000000-0000-0000-0000-000000000002', '2026-10-06', 20000, 50000, 0))->>'net')::numeric, 35388.88::numeric, 'Edna neto a centavos esperado');
+select is(((public.preview_member_settlement('43000000-0000-0000-0000-000000000002', '2026-10-06', 0, 0, 0))->>'pending_net_prizes')::numeric, 135000::numeric, 'Edna tiene tres premios netos pendientes por 135000');
+select is(((public.preview_member_settlement('43000000-0000-0000-0000-000000000002', '2026-10-06', 0, 0, 0))->>'debts')::numeric, 1074506::numeric, 'Edna deudas compensables incluyen P005, P013 e interes acordado');
+select is(((public.preview_member_settlement('43000000-0000-0000-0000-000000000002', '2026-10-06', 0, 0, 0))->>'net')::numeric, 60494.00::numeric, 'Edna juega polla: sin 12 % EA, neto sin cuota ni multa');
 
 select lives_ok(
-  $$ select public.confirm_member_settlement('43000000-0000-0000-0000-000000000002', 'settle-edna-c-001', '2026-10-06', 20000, 50000, 0, public.preview_member_settlement('43000000-0000-0000-0000-000000000002', '2026-10-06', 20000, 50000, 0)->>'preview_hash') $$,
+  $$ select public.confirm_member_settlement('43000000-0000-0000-0000-000000000002', 'settle-edna-c-001', '2026-10-06', 0, 0, 0, public.preview_member_settlement('43000000-0000-0000-0000-000000000002', '2026-10-06', 0, 0, 0)->>'preview_hash') $$,
   'confirma liquidacion Edna con compensaciones'
 );
 select is((select count(*) from public.polla_prizes where winner_cycle_member_id = '43000000-0000-0000-0000-000000000002' and status = 'settled'), 3::bigint, 'premios usados en liquidacion no quedan pagables por polla');
@@ -166,8 +166,11 @@ select lives_ok(
   $$ select public.pay_member_settlement((select id from public.member_settlements where idempotency_key = 'settle-edna-c-001'), 'pay-edna-c-001', '2026-10-08', 'bank', (select id from public.bank_accounts where display_name = 'Banco ficticio C'), 'transferencia Edna ficticia') $$,
   'paga liquidacion Edna'
 );
-select is((select sum(amount) from public.member_settlement_payments), 1010284::numeric, 'transferencias conjuntas suman 1010284');
-select is((select round(sum(amount), 2) from public.ledger_entries where account = 'common_expense' and operation_id in (select operation_id from public.member_settlement_payments)), 0.24::numeric, 'redondeo de pagos queda explicito por 0.24');
+-- Annie: 1.000.000 + 44.894,88 - 20.000 - 50.000 = 974.894,88 -> 974.895.
+-- Edna participa en polla, sin 12 % EA: 1.000.000 + 135.000 - 1.074.506 = 60.494.
+-- Total: 974.895 + 60.494 = 1.035.389; redondeo: 0,12 + 0 = 0,12.
+select is((select sum(amount) from public.member_settlement_payments), 1035389::numeric, 'transferencias conjuntas: Annie 974895 mas Edna 60494');
+select is((select round(sum(amount), 2) from public.ledger_entries where account = 'common_expense' and operation_id in (select operation_id from public.member_settlement_payments)), 0.12::numeric, 'redondeo: Annie 0.12 mas Edna 0');
 
 do $$
 declare
