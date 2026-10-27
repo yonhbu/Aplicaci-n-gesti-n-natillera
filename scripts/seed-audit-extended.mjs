@@ -20,3 +20,5 @@ export default function seedAuditExtended() {
     writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, 'utf8')), today }, null, 2));
   }
 }
+
+if (process.argv[1]?.endsWith('seed-audit-extended.mjs')) seedAuditExtended();

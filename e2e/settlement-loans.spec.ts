@@ -1,4 +1,4 @@
-import {expect,test,type Page} from '@playwright/test';
+import {expect,test,type Page} from './test-fixtures';
 import {readFileSync,writeFileSync} from 'node:fs';
 const folder='incoming/settlement-loans-2026-10-21';
 const fixture=JSON.parse(readFileSync(folder+'/fixture.json','utf8'));
@@ -10,7 +10,7 @@ test.beforeEach(async({page})=>{
  const errors:string[]=[];faults.set(page,errors);
  page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text())});
  page.on('response',r=>{if(r.status()>=400)errors.push(r.status()+' '+new URL(r.url()).pathname)});
- await page.route('**/*',route=>['http://127.0.0.1:5198',api,'https://fonts.googleapis.com','https://fonts.gstatic.com'].includes(new URL(route.request().url()).origin)?route.continue():route.abort());
+ await page.route('**/*',route=>['http://127.0.0.1:5198',api,'https://fonts.googleapis.com','https://fonts.gstatic.com'].includes(new URL(route.request().url()).origin)?route.fallback():route.abort());
 });
 test.afterEach(async({page})=>expect(faults.get(page)).toEqual([]));
 async function login(page:Page){

@@ -5,6 +5,7 @@ import path from 'node:path';
 const { yauzl } = createRequire(import.meta.url)('playwright-core/lib/utilsBundle');
 const roots = ['browser', 'extended-browser', 'corrections-browser', 'ea-regression-browser', 'all-browser', 'navigation-browser']
   .map(folder => `incoming/functional-audit/${folder}`);
+roots.push('incoming/ci-database');
 const files = [];
 function walk(dir) {
   for (const name of readdirSync(dir)) {

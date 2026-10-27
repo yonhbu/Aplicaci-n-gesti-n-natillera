@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { startAuditTrace, finishAuditTrace } from './audit-safe-trace';
 const fixture = JSON.parse(readFileSync('incoming/reconciliation-synthetic-2026-10-17/fixture.json', 'utf8')) as { cycleId: string; email: string };
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './test-fixtures';
 const app = 'http://127.0.0.1:5198', api = 'http://127.0.0.1:55421';
 const faults = new WeakMap<Page, string[]>();
 test.beforeEach(async ({ page }) => {
@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
   page.on('console', message => { if (message.type() === 'error' && !/Failed to load resource/.test(message.text())) list.push(message.text()); });
   await page.route('**/*', route => {
     const url = new URL(route.request().url());
-    if ([app, api, 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'].includes(url.origin)) return route.continue();
+    if ([app, api, 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'].includes(url.origin)) return route.fallback();
     return route.abort();
   });
 });

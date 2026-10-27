@@ -1,4 +1,4 @@
-import { expect, test, type Download, type Page } from '@playwright/test';
+import { expect, test, type Download, type Page } from './test-fixtures';
 import { readFileSync } from 'node:fs';
 import Decimal from 'decimal.js';
 import Papa from 'papaparse';
@@ -15,7 +15,7 @@ test.beforeEach(async ({ page }) => {
     if (![api, app, 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'].includes(origin)) {
       await route.abort(); throw Error('Destino no autorizado en auditoría: ' + origin);
     }
-    await route.continue();
+    await route.fallback();
   });
 });
 async function login(page: Page) {

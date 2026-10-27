@@ -1,7 +1,7 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './test-fixtures';
 
 const api = 'http://127.0.0.1:55421';
-const app = 'http://127.0.0.1:5188';
+const app = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:5188';
 const email = 'qa-audit-2026@example.test';
 const cycleId = 'a0150000-0000-4000-8000-000000000002';
 
@@ -10,7 +10,7 @@ async function login(page: Page) {
     const url = new URL(route.request().url());
     const allowed = [api, app, 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'];
     if (!allowed.includes(url.origin)) return route.abort();
-    return route.continue();
+    return route.fallback();
   });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.getByLabel('Correo autorizado').fill(email);
@@ -79,7 +79,10 @@ test('QA-001: a fixed-yield member cannot register a new polla contribution', as
   expect(result.status).toBe(400);
   expect(result.error).toBe('Este socio solo ahorra al 12 % EA y no participa en polla.');
   expect(result.count).toBe(0);
+  await page.reload();
   await goPolla(page);
+  await page.getByRole('button', { name: 'Octubre', exact: true }).click();
+  await page.getByRole('button', { name: 'QA Guard Regression', exact: true }).click();
   await page.getByRole('button', { name: 'Registrar aporte', exact: true }).click();
   await expect(page.getByRole('dialog').getByRole('option', { name: 'QA Bruno D', exact: true })).toHaveCount(0);
 });

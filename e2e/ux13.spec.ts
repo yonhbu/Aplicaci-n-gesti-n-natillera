@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './test-fixtures';
 const base = 'incoming/ux13-2026-10-20';
 const fixture = JSON.parse(readFileSync(base + '/fixture.json', 'utf8'));
 const before = process.env.UX13_PHASE === 'before';
@@ -12,7 +12,7 @@ test.beforeEach(async ({page}) => {
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   page.on('response', response => { if (response.status() >= 400) errors.push(response.status() + ' ' + new URL(response.url()).pathname); });
-  await page.route('**/*', route => ['http://127.0.0.1:5198', api, 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'].includes(new URL(route.request().url()).origin) ? route.continue() : route.abort());
+  await page.route('**/*', route => ['http://127.0.0.1:5198', api, 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'].includes(new URL(route.request().url()).origin) ? route.fallback() : route.abort());
 });
 test.afterEach(async ({page}) => expect(faults.get(page)).toEqual([]));
 async function login(page: Page) {
@@ -46,7 +46,7 @@ async function overflow(page: Page) {
 for (const width of [320,375,390,768,1024,1440]) test('inventory and invariants at '+width,async({page})=>{
   await page.setViewportSize({width,height:1000}); await login(page);
   const expected=await invariants(page); const path=(process.env.UX13_EVIDENCE_DIR || base)+'/'+(before?'before':'after')+'/'+width;mkdirSync(path,{recursive:true});
-  if(before)writeFileSync(path+'/invariants.json',JSON.stringify(expected,null,2)); else expect(expected).toEqual(JSON.parse(readFileSync(base+'/before/'+width+'/invariants.json','utf8')));
+  if(before)writeFileSync(path+'/invariants.json',JSON.stringify(expected,null,2)); else expect(expected).toEqual(JSON.parse(readFileSync(process.env.E2E_SQL_BASELINE || base+'/before/'+width+'/invariants.json','utf8')));
   const inventory:any[]=[];
   for (const id of ['home','members',...modules.map(id=>'more/'+id)]) {
     await page.goto('/#/'+id); const section=id.split('/')[1];
@@ -68,7 +68,7 @@ for (const width of [320,375,390,768,1024,1440]) test('inventory and invariants 
 });
 test('Home presentation retains canonical amounts and moves details out',async({page})=>{
   test.skip(before); await page.setViewportSize({width:375,height:1000}); await login(page);
-  const model=await invariants(page);expect(model).toEqual(JSON.parse(readFileSync(base+'/before/375/invariants.json','utf8')));
+  const model=await invariants(page);expect(model).toEqual(JSON.parse(readFileSync(process.env.E2E_SQL_BASELINE || base+'/before/375/invariants.json','utf8')));
   await expect(page.locator('.home-metrics .home-metric')).toHaveCount(6);
   await expect(page.locator('.home-page .bank-position,.home-page .money-reconstruction,.home-page .home-grid')).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Gestionar polla'})).toBeVisible();
@@ -77,10 +77,11 @@ test('Home presentation retains canonical amounts and moves details out',async({
 });
 test('Socios monthly context, modes, withdrawn, empty and detail access',async({page})=>{
   test.skip(before);await page.setViewportSize({width:375,height:1000});await login(page);await page.goto('/#/members');
-  await expect(page.locator('[data-member-stat=active]')).toHaveText('3');
+  await expect(page.locator('[data-member-stat=active]')).toHaveText('No verificable');
+  await expect(page.getByText(/El estado histórico.*no es verificable/)).toBeVisible();
   await expect(page.locator('[data-member-stat=complete]')).toHaveText('1 de 3');
   await expect(page.locator('[data-member-stat=pending]')).toHaveText('2');
-  await expect(page.getByText('B · Solo ahorro',{exact:true})).toHaveCount(2);
+  await expect(page.locator('.directory-mode').filter({hasText:'B · Solo ahorro'})).toHaveCount(2);
   await page.getByLabel('Fecha de corte',{exact:true}).fill('2026-09-20');
   await expect(page.locator('[data-member-stat=complete]')).toHaveText('3 de 3');
   await expect(page.locator('[data-member-stat=pending]')).toHaveText('0');
@@ -129,7 +130,7 @@ for(const width of [375,1440])test('navigation, audit details, backups and keybo
     if(isJson)expect(JSON.parse(data).tables).toBeTruthy();else expect(data).toContain('aportes_ahorro');
   }
   await page.getByText('Qué incluye el respaldo',{exact:true}).click();await expect(page.locator('.backup-inventory .count-grid')).toBeVisible();
-  await page.goto('/#/members');await page.getByRole('searchbox',{name:'Buscar socio'}).focus();await expect(page.getByRole('searchbox',{name:'Buscar socio'})).toBeFocused();await page.keyboard.press('Tab');await expect(page.getByRole('button',{name:'Ver ahorro',exact:true}).first()).toBeFocused();
+  await page.goto('/#/members');await page.getByRole('searchbox',{name:'Buscar socio'}).focus();await expect(page.getByRole('searchbox',{name:'Buscar socio'})).toBeFocused();for (const label of ['Todos','Activos','Solo ahorro (B)','Polla y rendimientos (A)','Nuevo socio','Ver ahorro']) { await page.keyboard.press('Tab'); await expect(page.getByRole('button',{name:label,exact:true}).first()).toBeFocused(); }
   await page.emulateMedia({reducedMotion:'reduce'});await page.goto('/#/more/admin');
   await page.evaluate(()=>document.documentElement.style.fontSize='200%');expect((await overflow(page)).global).toBe(false);
   await page.evaluate(()=>document.documentElement.style.fontSize='');expect(await invariants(page)).toEqual(model);

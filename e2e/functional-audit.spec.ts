@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './test-fixtures';
 import { readFileSync } from 'node:fs';
 import { writeFileSync } from 'node:fs';
 import { startAuditTrace, finishAuditTrace } from './audit-safe-trace';
@@ -17,7 +17,7 @@ test.beforeEach(async ({ page }) => {
       await route.abort();
       throw Error('Destino de red no autorizado en auditoría: ' + origin);
     }
-    await route.continue();
+    await route.fallback();
   });
 });
 async function login(page: Page, email = f.email, heading = 'Inicio') {

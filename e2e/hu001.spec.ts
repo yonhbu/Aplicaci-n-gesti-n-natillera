@@ -1,6 +1,6 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from './test-fixtures';
 import { createClient } from '@supabase/supabase-js';
-import { Buffer } from 'node:buffer';
+
 
 const supabaseUrl = process.env.SUPABASE_URL ?? '';
 const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY;
@@ -8,8 +8,8 @@ const adminEmail = (process.env.NATILLERA_ADMIN_EMAILS ?? 'e2e-admin@example.tes
 const outsiderEmail = 'e2e-outsider@example.test';
 const mailpitUrl = process.env.E2E_MAILPIT_URL ?? 'http://127.0.0.1:55424';
 
-test.describe.configure({ mode: 'serial' });
-test.skip(!supabaseUrl || !supabaseSecretKey, 'Requiere Supabase TEST y variables generadas por scripts/write-test-env.mjs.');
+test.describe.configure({ mode: 'default' });
+if (!supabaseUrl || !supabaseSecretKey) throw Error('Se requiere el preflight y bootstrap sintético TEST de npm run test:e2e.');
 
 test.beforeAll(async () => {
   const admin = createClient(supabaseUrl, supabaseSecretKey as string, {
@@ -70,13 +70,27 @@ test('OTP, socio, aporte, prestamo, polla, recarga y usuario sin membresia', asy
   // El detalle por socio (último aporte, progreso) se consulta en Socios; Ahorros muestra el explorador mensual.
   await goMain(page, 'Socios');
   let memberRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: memberName }) });
-  await expect(memberRow.getByText(/Octubre.*50\.000/)).toBeVisible();
+  await expect(memberRow.locator('.directory-received')).toContainText('50.000,00');
+  await expect(memberRow).toContainText('23/09/2026');
 
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Socios', exact: true })).toBeVisible();
   await expect(page.getByRole('cell', { name: memberName })).toBeVisible();
   memberRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: memberName }) });
-  await expect(memberRow.getByText(/Octubre.*50\.000/)).toBeVisible();
+  await expect(memberRow.locator('.directory-received')).toContainText('50.000,00');
+  await expect(memberRow).toContainText('23/09/2026');
+
+  const savedContribution = await page.evaluate(async name => {
+    const { supabase } = await import('/src/lib/supabase.ts');
+    const member = await supabase.from('members').select('id').eq('display_name',name).single();
+    if (member.error) throw Error(member.error.message);
+    const participation = await supabase.from('cycle_members').select('id').eq('member_id',member.data.id).single();
+    if (participation.error) throw Error(participation.error.message);
+    const result = await supabase.from('savings_contributions').select('amount,applied_month,effective_date').eq('cycle_member_id',participation.data.id).single();
+    if (result.error) throw Error(result.error.message);
+    return result.data;
+  }, memberName);
+  expect(savedContribution).toEqual({ amount:50000, applied_month:10, effective_date:'2026-09-23' });
 
   await goMain(page, 'Préstamos');
   const loansPanel = page.locator('section.loans-page');
@@ -107,7 +121,7 @@ test('OTP, socio, aporte, prestamo, polla, recarga y usuario sin membresia', asy
 
   await loanRow.getByRole('button', { name: 'Ver detalle' }).click();
   const loanDetail = loansPanel.locator('[data-loan-detail]');
-  await expect(loanDetail.getByText('Capital pendiente')).toBeVisible();
+  await expect(loanDetail.getByText('Capital pendiente', { exact: true })).toBeVisible();
   await loanDetail.getByRole('button', { name: 'Registrar pago' }).click();
   const paySheet = panelByHeading(page, 'Registrar pago');
   const payField = (label: string) => fieldInPanel(paySheet, label);
@@ -164,12 +178,12 @@ test('OTP, socio, aporte, prestamo, polla, recarga y usuario sin membresia', asy
   await pollaPanel.getByRole('button', { name: 'Asignar ganador' }).click();
   const prizeSheet = panelByHeading(page, 'Asignar ganador');
   await fieldInPanel(prizeSheet, 'Ganador').selectOption({ label: memberName });
-  await fieldInPanel(prizeSheet, 'Premio bruto').fill('40.000');
+  await fieldInPanel(prizeSheet, 'Premio bruto').fill('10.000');
   await fieldInPanel(prizeSheet, 'Fecha premio').fill('2026-10-06');
   await prizeSheet.getByRole('button', { name: 'Asignar premio' }).click();
   await expect(prizeSheet).toHaveCount(0);
   const prizeRow = pollaPanel.locator('[data-prize-row]').filter({ hasText: memberName });
-  await expect(prizeRow.first()).toContainText(/Acreditado .*35\.000/);
+  await expect(prizeRow.first()).toContainText(/Acreditado .*5\.000/);
   await expect(prizeRow.getByRole('button', { name: /Pagar/ })).toHaveCount(0);
 
   await goMore(page, 'Banco y caja');
@@ -209,7 +223,7 @@ test('OTP, socio, aporte, prestamo, polla, recarga y usuario sin membresia', asy
   await fee.sheet.getByRole('button', { name: 'Registrar comisión' }).click();
   await expect(fee.sheet).toHaveCount(0);
 
-  const transfer = await openBankSheet('Traslado', 'Traslado de dinero');
+  const transfer = await openBankSheet('Mover entre banco y efectivo', 'Mover entre banco y efectivo');
   await transfer.sheet.getByRole('button', { name: 'Banco → efectivo' }).click();
   await transfer.field('Monto').fill('100.000');
   await transfer.field('Fecha').fill('2026-10-04');
@@ -244,22 +258,25 @@ test('OTP, socio, aporte, prestamo, polla, recarga y usuario sin membresia', asy
   await savingsPanel.getByRole('button', { name: 'Guardar aporte' }).click();
   await expect(page.getByText('Aporte confirmado por la base.')).toBeVisible();
 
-  await goMore(page, 'Cuentas finales de socios');
+  await goMore(page, 'Cuentas finales');
   const settlementPanel = page.locator('section.settlement-page');
   await expect(settlementPanel).toBeVisible();
   await settlementPanel.getByRole('button').filter({ hasText: settlementName }).click();
-  const settlementSheet = panelByHeading(page, `Cuenta final de ${settlementName}`);
-  const settlementField = (label: string) => fieldInPanel(settlementSheet, label);
+  const settlementSheet = page.getByRole('dialog');
+  await expect(settlementSheet.getByRole('heading', { name: `Cuenta final de ${settlementName}`, exact: true })).toBeVisible();
+  const settlementField = (label: string) => label === 'Cuenta'
+    ? settlementSheet.getByRole('combobox', { name: label, exact: true })
+    : settlementSheet.getByLabel(label, { exact: true });
   await settlementField('Fecha de corte').fill('2026-10-06');
   await settlementSheet.getByRole('button', { name: 'Calcular' }).click();
   await expect(settlementSheet.getByText(/Transferencia redondeada/)).toBeVisible();
   await settlementSheet.getByRole('button', { name: 'Confirmar cuenta final' }).click();
-  await expect(page.getByText('Liquidación actualizada.')).toBeVisible();
+  await expect(settlementSheet.getByText('Cálculo confirmado', { exact: false })).toBeVisible();
   await settlementSheet.getByRole('button', { name: 'Banco', exact: true }).click();
   await settlementField('Cuenta').selectOption({ label: `Banco E2E ${unique}` });
   await settlementField('Referencia').fill('pago liquidacion E2E ficticio');
   await settlementSheet.getByRole('button', { name: /^Pagar / }).click();
-  await expect(page.getByText('Liquidación actualizada.')).toBeVisible();
+  await expect(settlementSheet).toHaveCount(0);
   await expect(settlementPanel.getByRole('button').filter({ hasText: settlementName })).toContainText('Pagada');
 
   await goMore(page, 'Respaldos');
@@ -267,14 +284,14 @@ test('OTP, socio, aporte, prestamo, polla, recarga y usuario sin membresia', asy
   await page.getByRole('button', { name: 'Descargar respaldo' }).click();
   const jsonDownload = await jsonDownloadPromise;
   const jsonText = await downloadText(jsonDownload);
-  const parsed = JSON.parse(jsonText) as { format: string; data: Record<string, unknown[]> };
-  expect(parsed.format).toBe('natillera-manager.abcd-fin.v2');
-  for (const key of ['memberCapitalCredits', 'bankYieldDistributions', 'loanProfitPeriodDistributions', 'loanProfitPeriodAllocations', 'finRulesActivations']) {
-    expect(Array.isArray(parsed.data[key]), key).toBe(true);
+  const parsed = JSON.parse(jsonText) as { format: string; tables: Record<string, unknown[]> };
+  expect(parsed.format).toBe('natillera-manager.workspace.v3');
+  for (const key of ['member_capital_credits', 'bank_yield_distributions', 'loan_profit_period_distributions', 'loan_profit_period_allocations', 'fin_rules_activations']) {
+    expect(Array.isArray(parsed.tables[key]), key).toBe(true);
   }
-  expect(parsed.data.cycleMembers.length).toBeGreaterThanOrEqual(2);
-  expect(parsed.data.contributions.length).toBeGreaterThanOrEqual(2);
-  expect(parsed.data.loans.length).toBeGreaterThanOrEqual(1);
+  expect(parsed.tables.cycle_members.length).toBeGreaterThanOrEqual(2);
+  expect(parsed.tables.savings_contributions.length).toBeGreaterThanOrEqual(2);
+  expect(parsed.tables.loan_contracts.length).toBeGreaterThanOrEqual(1);
 
   const csvDownloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Descargar reporte CSV' }).click();
@@ -293,39 +310,27 @@ test('navegacion principal oculta modulos inactivos y conserva hash', async ({ p
   await page.goto('/#/loans');
   await loginWithOtp(page, adminEmail);
   await expect(page.locator('section.loans-page')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Aportes de ahorro' })).not.toBeVisible();
-
-  await goMain(page, 'Más');
-  await goMore(page, 'Migración');
-  await expect(panelByHeading(page, 'Migración de datos históricos')).toBeVisible();
-  await page.getByLabel('Respaldo JSON de la app anterior').setInputFiles({
-    name: 'legacy-e2e.json',
-    mimeType: 'application/json',
-    buffer: Buffer.from(JSON.stringify({ socios: [{ id: 'FORMULA', nombre: '=texto protegido' }], cuotas: [] }))
+  await goMore(page,'Banco y caja');
+  const trail = [page.url()];
+  let captureHistory = true;
+  page.on('framenavigated', frame => {
+    if (captureHistory && frame === page.mainFrame() && page.url() !== trail.at(-1)) trail.push(page.url());
   });
-  await page.getByRole('button', { name: 'Revisar archivos' }).click();
-  await expect(page.getByText('Huella del archivo')).toBeAttached();
-
-  const migrationDownloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Descargar informe de revisión' }).click();
-  const migrationDownload = await migrationDownloadPromise;
-  const migrationText = await downloadText(migrationDownload);
-  const migrationParsed = JSON.parse(migrationText) as { format: string; issues: unknown[] };
-  expect(migrationParsed.format).toBe('natillera-manager.migration-d.dry-run.v1');
-  expect(Array.isArray(migrationParsed.issues)).toBe(true);
-
-  await goMore(page, 'Respaldos');
-  await goMore(page, 'Migración');
-  await page.reload();
-  await expect(panelByHeading(page, 'Migración de datos históricos')).toBeVisible();
-  await page.goBack();
-  await expect(panelByHeading(page, 'Respaldos')).toBeVisible();
-  await page.goBack();
-  await expect(panelByHeading(page, 'Migración de datos históricos')).toBeVisible();
-  await page.goBack();
-  await expect(page.locator('section.bank-page')).toBeVisible();
-  await page.goBack();
-  await expect(page.locator('section.loans-page')).toBeVisible();
+  await expect(page.getByRole('button',{name:'Migración',exact:true})).toHaveCount(0);
+  // Legacy review is a domain/CLI operation; it no longer has a client import screen.
+  const report = await page.evaluate(async () => {
+    const { buildMigrationDryRun } = await import('/src/domain/migrationD.ts');
+    return buildMigrationDryRun({jsonText: JSON.stringify({socios:[{id:'FORMULA',nombre:'=texto protegido'}],cuotas:[]}),sourceHash:'synthetic-ci-review',sourceNames:['legacy-e2e-synthetic.json']});
+  });
+  expect(report.format).toBe('natillera-manager.migration-d.dry-run.v1');
+  expect(Array.isArray(report.issues)).toBe(true);
+  for (const [label,heading] of [['Respaldos','Respaldos'],['Movimientos','Movimientos financieros'],['Respaldos','Respaldos']]) {
+    await goMore(page,label);
+    await expect(page.getByRole('heading',{name:heading,exact:true})).toBeVisible();
+  }
+  captureHistory = false;
+  await page.reload(); await expect(page.getByRole('heading',{name:'Respaldos',exact:true})).toBeVisible();
+  for (const url of trail.slice(0,-1).reverse()) { await page.goBack(); await expect(page).toHaveURL(url); }
 });
 
 test('shell responsive mantiene navegacion accionable sin solapamientos', async ({ page }) => {
@@ -347,18 +352,22 @@ test('shell responsive mantiene navegacion accionable sin solapamientos', async 
     await expectShellNavigationClear(page);
 
     await goMain(page, 'Más');
-    await goMore(page, 'Migración');
-    await expect(panelByHeading(page, 'Migración de datos históricos')).toBeVisible();
+    await goMore(page, 'Movimientos');
+    await expect(panelByHeading(page, 'Movimientos financieros')).toBeVisible();
     await expectShellNavigationClear(page);
 
     await page.reload();
-    await expect(panelByHeading(page, 'Migración de datos históricos')).toBeVisible();
+    await expect(panelByHeading(page, 'Movimientos financieros')).toBeVisible();
     await expectShellNavigationClear(page);
 
+    const history = [page.url()];
+    const record = () => { if (page.url() !== history.at(-1)) history.push(page.url()); };
+    page.on('framenavigated', record);
     await goMore(page, 'Respaldos');
     await expect(panelByHeading(page, 'Respaldos')).toBeVisible();
-    await page.goBack();
-    await expect(panelByHeading(page, 'Migración de datos históricos')).toBeVisible();
+    page.off('framenavigated', record);
+    for (const url of history.slice(0,-1).reverse()) { await page.goBack(); await expect(page).toHaveURL(url); }
+    await expect(panelByHeading(page, 'Movimientos financieros')).toBeVisible();
   }
 });
 

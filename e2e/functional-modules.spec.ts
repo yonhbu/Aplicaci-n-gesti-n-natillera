@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Locator } from '@playwright/test';
+import { expect, test, type Page, type Locator } from './test-fixtures';
 import { readFileSync } from 'node:fs';
 import { startAuditTrace, finishAuditTrace } from './audit-safe-trace';
 import Decimal from 'decimal.js';
@@ -19,7 +19,7 @@ test.beforeEach(async ({ page }) => {
     if (![api, app, 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'].includes(origin)) {
       await route.abort(); throw Error('Destino no autorizado en TEST: ' + origin);
     }
-    await route.continue();
+    await route.fallback();
   });
 });
 

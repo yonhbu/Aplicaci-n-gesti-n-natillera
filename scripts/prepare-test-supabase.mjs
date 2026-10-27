@@ -22,6 +22,7 @@ const replacements = [
 function copyDirectory(name) {
   const source = path.join(sourceSupabase, name);
   const target = path.join(targetSupabase, name);
+  if (!path.resolve(target).startsWith(path.resolve(testRoot) + path.sep)) throw Error('Destino de preparación fuera de TEST.');
   rmSync(target, { recursive: true, force: true });
   if (existsSync(source)) {
     copyRecursive(source, target);
@@ -45,6 +46,7 @@ mkdirSync(targetSupabase, { recursive: true });
 
 let config = readFileSync(path.join(sourceSupabase, 'config.toml'), 'utf8');
 for (const [pattern, value] of replacements) {
+  if (!pattern.test(config)) throw Error('Configuración fuente inesperada: no se puede aislar TEST con seguridad.');
   config = config.replace(pattern, value);
 }
 

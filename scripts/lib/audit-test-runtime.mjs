@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { assertTestEnvironment } from './test-target.mjs';
 
 export const auditApi = 'http://127.0.0.1:55421';
 export const auditApp = 'http://127.0.0.1:5198';
@@ -6,6 +7,7 @@ export const auditContainer = 'supabase_db_natillera-manager-test';
 
 // No dotenv. Credentials stay in memory and are never returned in diagnostics.
 export function auditRuntime() {
+  assertTestEnvironment();
   let runtime;
   try {
     runtime = JSON.parse(execFileSync(process.execPath, ['node_modules/supabase/dist/supabase.js',

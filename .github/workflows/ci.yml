@@ -21,6 +21,14 @@ jobs:
 
   database:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SUPABASE_ENV: test
+      SUPABASE_URL: http://127.0.0.1:55421
+      VITE_SUPABASE_URL: http://127.0.0.1:55421
+      PLAYWRIGHT_BASE_URL: http://127.0.0.1:5198
+      PLAYWRIGHT_PORT: '5198'
+      E2E_MAILPIT_URL: http://127.0.0.1:55424
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,10 +36,19 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: npm run test:e2e:guards
       - run: npm run test:infra:start
       - run: npm run test:infra:reset
       - run: npm run test:rls
-      - run: npx playwright install chrome
+      - run: npx playwright install --with-deps chrome
       - run: npm run test:e2e
+      - run: node scripts/check-audit-artifacts.mjs
+      - if: always()
+        run: node scripts/summarize-e2e.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: database-e2e-summary
+          path: incoming/ci-database/summary.md
       - if: always()
         run: npm run test:infra:stop

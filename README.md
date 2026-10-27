@@ -4,7 +4,7 @@ Aplicacion privada para gestionar la base de Natillera con React, TypeScript, Vi
 
 Auditoría funcional 2026-10-26: correcciones locales y evidencia en [docs/qa/INFORME-AUDITORIA.md](docs/qa/INFORME-AUDITORIA.md), estado `READY_FOR_REVIEW`. Consulta [reglas vigentes](docs/BUSINESS_RULES.md) y [setup de auditoría sin dotenv](docs/LOCAL_SETUP.md). Los alcances A/B/C/D descritos abajo son antecedentes; no representan por sí solos el estado posterior de FIN, conciliaciones, reversos y respaldo `natillera-manager.workspace.v3`.
 
-Comandos de esta entrega: `npm run qa:functional:unit`, `npm run qa:functional:all`, `npm run qa:functional:build` y `npm run test:rls`. `qa:functional:e2e` limita la ejecución a escenarios nuevos. La configuración E2E general conserva otras suites históricas que requieren sus fixtures específicos.
+Comandos de esta entrega: `npm run qa:functional:unit`, `npm run qa:functional:all`, `npm run qa:functional:build` y `npm run test:rls`. `qa:functional:e2e` limita la ejecución a escenarios nuevos. `npm run test:e2e` prepara fixtures sintéticos y ejecuta todas las suites en escritorio y móvil sobre TEST, sin dotenv. [Cadena de CI, guardas y evidencias](docs/qa/CI-DATABASE.md).
 
 Estado actual: `NAT-HU-001`, `NAT-HU-002`, `NAT-HU-003`, `NAT-HU-004`, `NAT-HU-005` y `NAT-HU-006` en `READY_FOR_REVIEW`.
 

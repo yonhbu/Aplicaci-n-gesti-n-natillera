@@ -17,7 +17,7 @@ const supabaseBin = path.join(repoRoot, 'node_modules', '.bin', process.platform
 
 const commands = {
   start: ['start', '--workdir', workdir],
-  reset: ['db', 'reset', '--workdir', workdir],
+  reset: ['db', 'reset', '--local', '--workdir', workdir],
   rls: ['test', 'db', '--workdir', workdir],
   stop: ['stop', '--workdir', workdir]
 };
@@ -63,6 +63,7 @@ function redactSupabaseOutput(output) {
     'g',
   );
   return output
+    .replace(/\b(postgres(?:ql)?:\/\/)[^@\s"]+@/g, '$1[redacted]@')
     .replace(keyNamePattern, '"$1":"[redacted]"')
     .replace(/"(S3_PROTOCOL_ACCESS_KEY_ID|S3_PROTOCOL_ACCESS_KEY_SECRET)"\s*:\s*"[^"]+"/g, '"$1":"[redacted]"')
     .replace(/(sb_(?:publishable|secret)_[A-Za-z0-9_-]+)/g, '[redacted]')

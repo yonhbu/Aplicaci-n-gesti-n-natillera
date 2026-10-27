@@ -1,10 +1,10 @@
-import {expect,test,type Page} from '@playwright/test';
-const app='http://127.0.0.1:5196',api='http://127.0.0.1:55421';
+import {expect,test,type Page} from './test-fixtures';
+const app=process.env.PLAYWRIGHT_BASE_URL??'http://127.0.0.1:5196',api='http://127.0.0.1:55421';
 const errors=new WeakMap<Page,string[]>();
 test.beforeEach(async({page})=>{const list:string[]=[];errors.set(page,list);page.on('pageerror',e=>list.push(e.message));page.on('console',m=>{if(m.type()==='error'&&!/Failed to load resource/.test(m.text()))list.push(m.text());});});
 test.afterEach(async({page})=>{expect(errors.get(page)).toEqual([]);});
 async function login(page:Page,email='qa-ux-cortes@example.test'){
-  await page.route('**/*',r=>[app,api,'https://fonts.googleapis.com','https://fonts.gstatic.com'].includes(new URL(r.request().url()).origin)?r.continue():r.abort());
+  await page.route('**/*',r=>[app,api,'https://fonts.googleapis.com','https://fonts.gstatic.com'].includes(new URL(r.request().url()).origin)?r.fallback():r.abort());
   await page.goto('/',{waitUntil:'domcontentloaded'});await page.getByLabel('Correo autorizado').fill(email);
   const response=page.waitForResponse(r=>r.url()===api+'/auth/v1/otp');await page.getByRole('button',{name:'Enviar codigo',exact:true}).click();expect((await response).status()).toBe(200);
   await page.getByLabel('Codigo recibido').waitFor();const inbox=await(await page.request.get('http://127.0.0.1:55424/api/v1/messages')).json();
@@ -13,7 +13,7 @@ async function login(page:Page,email='qa-ux-cortes@example.test'){
   await page.getByLabel('Codigo recibido').fill(token!);await page.getByRole('button',{name:'Ingresar',exact:true}).click();await expect(page.getByRole('heading',{name:'Inicio',exact:true})).toBeVisible();
 }
 async function settlements(page:Page,name='QA Liquidación detallada'){
-  await page.getByRole('navigation',{name:'Secciones principales'}).getByRole('button',{name:'Más',exact:true}).click();await page.getByRole('navigation',{name:'Secciones de mas opciones'}).getByRole('button',{name:'Cuentas finales de socios',exact:true}).click();await page.getByRole('button').filter({hasText:name}).click();
+  await page.getByRole('navigation',{name:'Secciones principales'}).getByRole('button',{name:'Más',exact:true}).click();await page.getByRole('navigation',{name:'Secciones de mas opciones'}).getByRole('button',{name:'Cuentas finales',exact:true}).click();await page.getByRole('button').filter({hasText:name}).click();
 }
 async function calculate(page:Page,date='2026-10-16'){
   await page.getByLabel('Fecha de corte',{exact:true}).fill(date);await page.getByRole('button',{name:'Calcular',exact:true}).click();await expect(page.getByRole('button',{name:'Confirmar cuenta final',exact:true})).toBeVisible();
@@ -49,7 +49,16 @@ test('manual cycle shows zero fees and applies only entered amounts',async({page
 });
 test('malformed money and cutoff boundaries do not call preview',async({page})=>{
   await login(page,'qa-ux-manual@example.test');await settlements(page);let count=0;page.on('request',r=>{if(r.url().endsWith('/rpc/preview_member_settlement'))count++;});
-  const d=page.getByRole('dialog');for(const value of ['-1','NaN','1,234','1.23','1e9']){await d.getByLabel('Otros descuentos',{exact:true}).fill(value);await expect(d.getByRole('button',{name:'Calcular',exact:true})).toBeDisabled();}
+  const d=page.getByRole('dialog');
+  await page.context().grantPermissions(['clipboard-read','clipboard-write']);
+  for(const value of ['-1','NaN','1,234','1.23','1e9']) {
+    const input=d.getByLabel('Otros descuentos',{exact:true});
+    await input.fill(''); await input.focus();
+    await page.evaluate(value=>navigator.clipboard.writeText(value),value);
+    await page.keyboard.press('Control+V');
+    await expect(input).toHaveValue(value);
+    await expect(d.getByRole('button',{name:'Calcular',exact:true})).toBeDisabled();
+  }
   await d.getByLabel('Otros descuentos',{exact:true}).fill('0');for(const value of ['','2025-12-31','2026-12-06']){await d.getByLabel('Fecha de corte',{exact:true}).fill(value);await expect(d.getByRole('button',{name:'Calcular',exact:true})).toBeDisabled();}expect(count).toBe(0);
   await d.getByLabel('Otros descuentos',{exact:true}).fill('0,01');await calculate(page);await expect(d.locator('.total-row')).toContainText('60.493,99');
 });
@@ -97,16 +106,18 @@ test('settlement fits narrow landscape without horizontal page overflow',async({
   await login(page);await page.setViewportSize({width:812,height:375});await settlements(page);await calculate(page);await expect(page.getByText('QA-P013',{exact:true})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);const d=page.getByRole('dialog');expect(await d.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);await d.getByRole('button',{name:'Confirmar cuenta final',exact:true}).scrollIntoViewIfNeeded();await expect(d.getByRole('button',{name:'Confirmar cuenta final',exact:true})).toBeInViewport();
 });
 test('confirmed and paid snapshot persists; missing ref and empty source cannot pay',async({page},info)=>{
-  await login(page,'qa-ux-manual@example.test');const memberId='f4170000-0000-4000-8000-'+(info.project.name==='desktop'?'000000000204':'000000000205');const name='QA Pago '+info.project.name;
+  await login(page,'qa-ux-manual@example.test');const memberId='f4170000-0000-4000-8000-'+(info.project.name!=='mobile'?'000000000204':'000000000205');const name='QA Pago '+(info.project.name==='mobile'?'mobile':'desktop');
   await settlements(page,name);const d=page.getByRole('dialog');let saved=await records(page,'member_settlements','cycle_member_id',memberId);
   if(!saved.length){await d.getByLabel('Cuota de administración',{exact:true}).fill('20.000');await d.getByLabel('Multa por retiro',{exact:true}).fill('50.000');await calculate(page);await d.getByRole('button',{name:'Confirmar cuenta final',exact:true}).click();await expect(d.getByText('Cálculo confirmado',{exact:false})).toBeVisible();saved=await records(page,'member_settlements','cycle_member_id',memberId);}
   expect(saved).toHaveLength(1);expect(Number(saved[0].net_amount)).toBe(130000);expect(saved[0].snapshot.annual_admin_fee).toBe(20000);await page.reload();await page.getByRole('button').filter({hasText:name}).click();await expect(d.locator('.breakdown .value-row').filter({hasText:'Multa por retiro'})).toContainText('50.000,00');
   if(saved[0].status!=='paid'){
-    const pay=d.getByRole('button',{name:/^Pagar \$/});await expect(pay).toBeDisabled();await d.getByLabel('Referencia',{exact:true}).fill('UX-'+info.project.name);await d.getByLabel('Fecha del pago',{exact:true}).fill('2026-10-17');await expect(pay).toBeDisabled();await d.getByLabel('Fecha del pago',{exact:true}).fill('2026-10-16');await d.getByRole('combobox',{name:'Cuenta',exact:true}).selectOption({label:'QA Sin saldo'});
+    const serverToday = await page.evaluate(async () => { const {supabase}=await import('/src/lib/supabase.ts'); const result=await supabase.rpc('fin_civil_today'); if(result.error)throw Error(result.error.message);return result.data as string; });
+    const futureDate = new Date(serverToday+'T12:00:00Z');futureDate.setUTCDate(futureDate.getUTCDate()+1);
+    const pay=d.getByRole('button',{name:/^Pagar \$/});await expect(pay).toBeDisabled();await d.getByLabel('Referencia',{exact:true}).fill('UX-'+info.project.name);await d.getByLabel('Fecha del pago',{exact:true}).fill(futureDate.toISOString().slice(0,10));await expect(pay).toBeDisabled();await d.getByLabel('Fecha del pago',{exact:true}).fill('2026-10-16');await d.getByRole('combobox',{name:'Cuenta',exact:true}).selectOption({label:'QA Sin saldo'});
     const failed=page.waitForResponse(r=>r.url().endsWith('/rpc/pay_member_settlement'));await pay.click();expect((await failed).status()).toBe(400);await expect(d).toContainText('No hay dinero suficiente');expect((await records(page,'member_settlements','cycle_member_id',memberId))[0].status).toBe('confirmed');
     await d.getByRole('combobox',{name:'Cuenta',exact:true}).selectOption({label:'QA Cuenta principal'});const paid=page.waitForResponse(r=>r.url().endsWith('/rpc/pay_member_settlement'));await pay.click();expect((await paid).status()).toBe(200);await expect(d).toHaveCount(0);await page.reload();await page.getByRole('button').filter({hasText:name}).click();
   }
-  await expect(d).toContainText('Pagada:');await expect(d).toContainText('16 oct 2026');const final=await records(page,'member_settlements','cycle_member_id',memberId);expect(final).toHaveLength(1);expect(final[0].status).toBe('paid');expect(Number(final[0].transfer_amount)).toBe(130000);
+  await expect(d).toContainText('Pagada:');await expect(d).toContainText('16/10/2026');const final=await records(page,'member_settlements','cycle_member_id',memberId);expect(final).toHaveLength(1);expect(final[0].status).toBe('paid');expect(Number(final[0].transfer_amount)).toBe(130000);
   const payments=await records(page,'member_settlement_payments','settlement_id',final[0].id);expect(payments).toHaveLength(1);expect(Number(payments[0].amount)).toBe(130000);const entries=await records(page,'ledger_entries','operation_id',payments[0].operation_id);expect(entries.reduce((sum,e)=>sum+Number(e.amount),0)).toBe(0);expect(entries.filter(e=>e.account==='cash')).toHaveLength(1);expect(Number(entries.find(e=>e.account==='cash').amount)).toBe(-130000);
 });
 
@@ -116,7 +127,7 @@ test('stale confirmation returns actionable error and requires recalculation',as
   const response=page.waitForResponse(r=>r.url().endsWith('/rpc/confirm_member_settlement'));await page.getByRole('button',{name:'Confirmar cuenta final',exact:true}).click();expect((await response).status()).toBe(400);await expect(page.getByRole('dialog')).toContainText('Los saldos cambiaron');await expect(page.getByRole('button',{name:'Confirmar cuenta final',exact:true})).toHaveCount(0);await calculate(page);await expect(page.getByRole('button',{name:'Confirmar cuenta final',exact:true})).toBeEnabled();
 });
 test('committed zero settlement survives lost response and does not create zero payment',async({page},info)=>{
-  await login(page,'qa-ux-manual@example.test');const n=info.project.name==='desktop'?6:7;const memberId='f4170000-0000-4000-8000-'+String(200+n).padStart(12,'0');await settlements(page,'QA Participante '+n);
+  await login(page,'qa-ux-manual@example.test');const n=info.project.name!=='mobile'?6:7;const memberId='f4170000-0000-4000-8000-'+String(200+n).padStart(12,'0');await settlements(page,'QA Participante '+n);
   if(!(await records(page,'member_settlements','cycle_member_id',memberId)).length){
     await calculate(page);let resolve!:()=>void;const committed=new Promise<void>(r=>resolve=r);await page.route(api+'/rest/v1/rpc/confirm_member_settlement',async route=>{const result=await route.fetch();expect(result.status()).toBe(200);resolve();await route.abort('connectionfailed');},{times:1});
     await page.getByRole('button',{name:'Confirmar cuenta final',exact:true}).click();await committed;await expect(page.getByText('No se pudo confirmar si la operación quedó guardada.',{exact:false})).toBeVisible();

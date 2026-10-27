@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Locator } from '@playwright/test';
+import { expect, test, type Page, type Locator } from './test-fixtures';
 import { readFileSync } from 'node:fs';
 import Decimal from 'decimal.js';
 import { startAuditTrace, finishAuditTrace } from './audit-safe-trace';
@@ -17,7 +17,7 @@ async function login(page: Page) {
     if (![api, app, 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'].includes(new URL(route.request().url()).origin)) {
       await route.abort(); throw Error('Destino no autorizado en publicación sintética.');
     }
-    await route.continue();
+    await route.fallback();
   });
   await page.goto('/');
   await page.getByLabel('Correo autorizado').fill(fixture.email);
