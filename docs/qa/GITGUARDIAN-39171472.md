@@ -23,7 +23,7 @@ No se reescribe automáticamente el commit histórico. Si una comprobación auto
 
 ## Evidencia remota aportada por Juan
 
-[Run indicado 40572942417](https://github.com/yonhbu/Aplicaci-n-gesti-n-natillera/actions/runs/40572942417). El conector devuelve 404; se revisó en su lugar el ZIP local `logs_109973499375.zip`, aportado por Juan. SHA256: `0c76142370041b73151ba613f08387cebe3a70b4357b4010975e45333db60400`.
+[Run indicado 40572942417](https://github.com/yonhbu/Aplicaci-n-gesti-n-natillera/actions/runs/40572942417). Al iniciar, el conector devolvía 404; se revisó en su lugar el ZIP local `logs_109973499375.zip`, aportado por Juan. SHA256: `0c76142370041b73151ba613f08387cebe3a70b4357b4010975e45333db60400`.
 
 El checkout del ZIP es `1bf223bf31b5473eabf4ef89c966fbc32683c32a`, rama `codex/fix-ci-test-e2e`. El preflight confirma Auth/API TEST55421, correo TEST55424 y PostgreSQL TEST55422. No aparece el antiguo error de arranque DEV. Se ejecutaron 250 casos: **242 correctos, 8 fallidos, 0 omitidos, 0 flaky**. Por tanto el desacuerdo TEST/DEV quedó corregido en esa revisión, pero el trabajo database todavía fallaba por regresiones reales de interfaz:
 
@@ -49,4 +49,58 @@ La corrección reconoce PGRST202 en las RPC de notas, muestra la migración requ
 
 ## Verificación de esta rama
 
-Resultados finales pendientes de cerrar tras la ejecución completa local. Los logs desechables viven en `incoming/gitguardian-39171472-*`; no se versionan. El informe se actualizará con el resultado real, incluidos fallos si los hubiera.
+Las comprobaciones locales se ejecutaron en Windows/Chrome contra TEST descartable; no equivalen por sí solas al resultado de Ubuntu:
+
+| Comprobación | Resultado real |
+|---|---|
+| `test:e2e:guards` | 12/12, cero fallidas y omitidas. |
+| `qa:functional:unit` | 29 archivos, 164/164; se conservan las 160 pruebas anteriores. |
+| TypeScript y `qa:functional:build` | Correctos; Vite de auditoría sin dotenv. |
+| Reconstrucción TEST | Primer intento DbSetupError al inicializar el contenedor; segundo intento terminó con las 41 migraciones. No se cuenta el primero como éxito. |
+| `test:rls` | 27/27 archivos y 686 aserciones correctas tras reconstruir TEST. |
+| Regresión dirigida inicial | 12/12 entre escritorio y móvil. |
+| `test:e2e` completo, árbol operativo c5b0ec1 | 252/252: 126 escritorio y 126 móvil; cero fallidas, omitidas y flaky; proceso terminó con código 0. |
+| `check:secrets` | Correcto. |
+| Artefactos de la corrida completa | 276 ZIP, 81.408 entradas; sin JWT, claves elevadas ni trazas crudas. |
+| Regresión posterior del título, 6f96177 | UX14 texto al 200 %: 1/1 escritorio y 1/1 móvil. |
+
+Se verificó por el canal administrativo local que TEST registra la migración 20261108000100, ambas RPC de notas y la columna de nota. No se extrapola ese resultado a producción.
+
+Los logs locales se conservan en `incoming/gitguardian-39171472-*` (ignorados por Git). La corrida completa está en `gitguardian-39171472-full-e2e.log`; su resumen de 252 casos en `gitguardian-39171472-summary.log`. La corrida dirigida posterior genera otro informe filtrado: no debe presentarse como sustituto de los 252 casos completos.
+
+## Contraste adicional en GitHub Actions
+
+Después de que Juan hizo público el repositorio fue posible leer Actions con el conector. La creación del PR devuelve 403 `Resource not accessible by integration`; se publicó la rama mediante Git, sin hacer merge.
+
+El [primer CI de la corrección, 40584318635](https://github.com/yonhbu/Aplicaci-n-gesti-n-natillera/actions/runs/40584318635), commit c5b0ec1, confirmó web correcto y **250/252 E2E correctos, 2 fallidos, cero omitidos/flaky**. Los dos fallos eran UX14: palabra administrador partida en fuentes de Ubuntu a 320 px. Contraste, detalle, enfoque y HU001 ya pasaban allí.
+
+El ajuste 6f96177 retira la partición de esa palabra y reduce únicamente el padding lateral del encabezado de administración a 8 px cuando el viewport es menor a 360 px. Mantiene el tamaño de texto y las aserciones de palabra íntegra, ausencia de recorte y colisiones. La regresión local de ambos proyectos pasó.
+
+Ejecución de validación Ubuntu de ese ajuste: [40597955108](https://github.com/yonhbu/Aplicaci-n-gesti-n-natillera/actions/runs/40597955108), SHA `6f961770e6b1b1ccad9456c59917c0050c10b66e`. Resultado: web correcto; E2E 250/252, cero omitidos/flaky. Móvil pasó 126/126; en escritorio reaparecieron el desborde del título y el enfoque fuera del viewport en UX16. El ajuste de padding por sí solo no fue suficiente y no se presenta como cierre aprobado.
+
+La revisión 03aa651 mantiene visible el control enfocado del diálogo ante cambios de tamaño/contenido mediante ResizeObserver y el evento focusin. Solo desplaza el scroll del propio diálogo; no cambia foco ni datos financieros. La aserción de viewport espera la actualización de layout y conserva los límites geométricos originales. El diagnóstico de texto incorpora ancho, rectángulos y tipografía calculada si falla, sin credenciales.
+
+El workflow añade una comprobación dirigida de esos cuatro recorridos antes de `npm run test:e2e`; la colección completa de ambos proyectos permanece obligatoria. En [40601516059](https://github.com/yonhbu/Aplicaci-n-gesti-n-natillera/actions/runs/40601516059), SHA `03aa651fa86c9dd0845a7219a5019e1db9254e92`, **web y database terminaron correctamente**. La comprobación dirigida de Ubuntu pasó 4/4 y después la colección completa pasó **252/252: 126 escritorio y 126 móvil, cero fallidas, omitidas y flaky**. El escaneo remoto de artefactos pasó: **108 ZIP y 16.696 entradas**, sin JWT, claves elevadas ni trazas crudas. Las 12 guardas y las 686 aserciones SQL también pasaron en esa ejecución. No se utilizaron retries, continue-on-error ni exclusiones para aprobarla. En Windows, 164/164 unitarias, TypeScript, 4/4 E2E dirigidas y 12/12 guardas pasaron después del cambio de enfoque.
+
+## Archivos modificados
+
+- `scripts/test-e2e-guards.mjs`: fixture explícitamente sintético, destinos negativos y verificación de redacción.
+- `scripts/lib/source-secret-findings.mjs`: detector que devuelve solo ubicaciones.
+- `scripts/check-secrets.mjs`: integración del detector y revisión YAML.
+- `src/data/loans.ts` y `src/data/loans.test.ts`: rechazo explícito de RPC de notas ausente, sin fallback financiero; regresión de pago y prepago.
+- `src/lib/userMessages.ts` y `src/lib/userMessages.test.ts`: aviso conocido permitido sin exponer errores arbitrarios; pruebas anteriores conservadas.
+- `e2e/functional-audit.spec.ts`: ausencia simulada de migración, conservación de nota y cero efectos financieros.
+- `e2e/hu001.spec.ts`: comprobar recibos y cerrar el detalle antes de filtrar, sin clic forzado.
+- `src/styles.css` y `src/ui/overview.css`: reflow, ancho mínimo, enfoque y contraste; sin tocar cálculos financieros.
+- `src/ui/App.tsx`: conservación de la visibilidad del foco en diálogos con contenido dinámico.
+- `e2e/ux14.spec.ts` y `e2e/ux16.spec.ts`: diagnóstico geométrico sin valores sensibles y espera de visibilidad completa antes de medir.
+- `.github/workflows/ci.yml`: comprobación dirigida previa; colección completa y escaneo de artefactos conservados.
+- Este informe: origen, límites, evidencia, pruebas y dependencia productiva pendiente.
+
+## Cierre para revisión
+
+La ejecución remota anterior verifica el último commit funcional. La actualización posterior de este informe modifica únicamente documentación y no cambia su árbol operativo de frontend, SQL, scripts, workflow o pruebas. Los resultados previos fallidos se conservan arriba; no se presentan como aprobados.
+
+Estado final: **READY_FOR_REVIEW**. El código está publicado en `codex/gitguardian-39171472`. El conector permite lectura del repositorio público, pero crear PR sigue rechazado con 403 de permisos de la integración; no se ha creado un PR ni hecho merge. [Abrir comparación para revisión](https://github.com/yonhbu/Aplicaci-n-gesti-n-natillera/compare/main...codex/gitguardian-39171472?expand=1).
+
+Pendientes externos: clasificar el incidente 39171472 como Test credential en GitGuardian y revisar/aplicar explícitamente la migración de notas antes de la operación productiva del frontend correspondiente. Este parche no aplica SQL de producción ni convierte ese esquema pendiente en compatible por sí solo. Solo Juan puede aceptar la entrega y pasarla a DONE.
