@@ -59,7 +59,7 @@ async function composition(page: Page) {
           range.setStart(node, match.index!); range.setEnd(node, match.index! + match[0].length);
           const rects = [...range.getClientRects()];
           if (new Set(rects.map(rect => Math.round(rect.top))).size > 1) issues.push('Palabra partida: ' + match[0]);
-          if (rects.some(rect => rect.left < box.left - 1 || rect.right > box.right + 1)) issues.push('Texto fuera: ' + match[0]);
+          if (rects.some(rect => rect.left < box.left - 1 || rect.right > box.right + 1)) issues.push('Texto fuera: ' + match[0] + ' ' + JSON.stringify({ viewport: innerWidth, width: box.width, left: box.left, font: getComputedStyle(element).font, word: rects.map(rect => ({left:rect.left,right:rect.right,width:rect.width})) }));
           for(let ancestor=element.parentElement; ancestor; ancestor=ancestor.parentElement) {
             const style=getComputedStyle(ancestor);
             const boundary=ancestor.getBoundingClientRect();
