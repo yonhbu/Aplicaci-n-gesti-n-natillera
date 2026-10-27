@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './test-fixtures';
 const base = 'docs/ux/evidence/ux16';
 const fixture = JSON.parse(readFileSync('incoming/ux13-2026-10-20/fixture.json', 'utf8'));
 const before = process.env.UX16_PHASE === 'before';
@@ -48,7 +48,7 @@ for(const width of [320,375,390,768,1024,1280,1440]) test('three views '+width,a
  await page.setViewportSize({width,height:1000}); await login(page);
  const path=base+'/'+(before?'before':'after')+'/'+width;mkdirSync(path,{recursive:true});
  const values=await invariants(page);writeFileSync(path+'/invariants.json',JSON.stringify(values,null,2));
- if(!before)expect(values).toEqual(JSON.parse(readFileSync(base+'/before/'+width+'/invariants.json','utf8')));
+ if(!before)expect(values).toEqual(JSON.parse(readFileSync(process.env.E2E_SQL_BASELINE || base+'/before/'+width+'/invariants.json','utf8')));
  for(const route of ['home','members','more/admin']){
   await page.goto('/#/'+route);
   if(route==='members'){await page.getByRole('button',{name:'Detalle',exact:true}).first().click();await expect(page.getByRole('dialog')).toBeVisible();}

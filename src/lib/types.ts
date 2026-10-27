@@ -122,6 +122,8 @@ export interface LoanContract {
 }
 
 export interface LoanSchedule {
+  /** Raw immutable applications, including receipts reversed after a historical cut. */
+  payment_applications?: LoanPaymentApplication[];
   closed_by_settlement?: boolean;
   source_status?: 'projected' | 'paid' | 'cancelled';
   id: string;
@@ -137,7 +139,17 @@ export interface LoanSchedule {
   interest_paid?: string;
 }
 
+export interface LoanPaymentApplication {
+  id: string;
+  loan_id: string;
+  schedule_id: string | null;
+  payment_id: string;
+  capital_amount: string;
+  interest_amount: string;
+}
+
 export interface LoanPayment {
+  note?: string | null;
   id: string;
   operation_id?: string;
   loan_id: string;

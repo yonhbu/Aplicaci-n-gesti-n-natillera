@@ -1,3 +1,4 @@
+import { CopInput } from './CopInput';
 import { useRef, useState, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import type { BankAccount, Cycle, FinancialOperation } from '../lib/types';
@@ -35,7 +36,7 @@ export function PersonalFunds({ cycle, accounts, operations, today, onSaved, und
       <label>Movimiento personal<select value={direction} onChange={event => setDirection(event.target.value)} disabled={busy}><option value="in">Entrada personal</option><option value="out">Devolución personal</option></select></label>
       <label>Cuenta del movimiento personal<select required value={bank} onChange={event => setBank(event.target.value)} disabled={busy}><option value="">Selecciona una cuenta</option>{accounts.map(account => <option key={account.id} value={account.id}>{account.display_name}</option>)}</select></label>
       <label>Fecha del movimiento personal<input type="date" min={cycle.starts_on} max={today < cycle.closes_on ? today : cycle.closes_on} required value={date} onChange={event => setDate(event.target.value)} disabled={busy} /></label>
-      <label>Importe personal<input inputMode="decimal" required value={amount} onChange={event => setAmount(event.target.value)} disabled={busy} /></label>
+      <label>Importe personal<CopInput inputMode="decimal" required value={amount} onChange={event => setAmount(event.target.value)} disabled={busy} /></label>
       <label>Referencia personal<input required value={reference} onChange={event => setReference(event.target.value)} disabled={busy} /></label>
       <label>Motivo del movimiento personal<input required value={note} onChange={event => setNote(event.target.value)} disabled={busy} /></label>
       <label className="checkbox-label"><input type="checkbox" checked={verified} onChange={event => setVerified(event.target.checked)} disabled={busy} />Verifiqué el movimiento y que no está registrado antes.</label>

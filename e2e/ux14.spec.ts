@@ -1,5 +1,6 @@
+import { startAuditTrace, finishAuditTrace } from './audit-safe-trace';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './test-fixtures';
 const base = 'docs/ux/evidence/ux14';
 const evidenceBase = process.env.UX14_EVIDENCE_DIR || base;
 const fixture = JSON.parse(readFileSync('incoming/ux13-2026-10-20/fixture.json', 'utf8'));
@@ -13,9 +14,9 @@ test.beforeEach(async ({page}) => {
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   page.on('response', response => { if (response.status() >= 400) errors.push(response.status() + ' ' + new URL(response.url()).pathname); });
-  await page.route('**/*', route => ['http://127.0.0.1:5198', api, 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'].includes(new URL(route.request().url()).origin) ? route.continue() : route.abort());
+  await page.route('**/*', route => ['http://127.0.0.1:5198', api, 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'].includes(new URL(route.request().url()).origin) ? route.fallback() : route.abort());
 });
-test.afterEach(async ({page}) => expect(faults.get(page)).toEqual([]));
+test.afterEach(async ({page}, info) => { await finishAuditTrace(page, info); expect(faults.get(page)).toEqual([]); });
 async function login(page: Page) {
   await page.goto('/'); await page.getByLabel('Correo autorizado').fill(fixture.email);
   await page.getByRole('button', {name:'Enviar codigo',exact:true}).click(); await page.getByLabel('Codigo recibido').waitFor();
@@ -79,7 +80,7 @@ async function composition(page: Page) {
 for (const width of [320,375,390,768,1024,1440]) test('inventory and invariants at '+width,async({page})=>{
   await page.setViewportSize({width,height:1000}); await login(page);
   const expected=await invariants(page); const path=evidenceBase+'/'+(before?'before':'after')+'/'+width;mkdirSync(path,{recursive:true});
-  if(!before)expect(expected).toEqual(JSON.parse(readFileSync(base+'/before/'+width+'/invariants.json','utf8')));
+  if(!before)expect(expected).toEqual(JSON.parse(readFileSync(process.env.E2E_SQL_BASELINE || base+'/before/'+width+'/invariants.json','utf8')));
   writeFileSync(path+'/invariants.json',JSON.stringify(expected,null,2));
   const inventory:any[]=[];
   for (const id of ['home','members',...(before ? [] : ['more']),...modules.map(id=>'more/'+id)]) {
@@ -103,11 +104,11 @@ for (const width of [320,375,390,768,1024,1440]) test('inventory and invariants 
   expect(await invariants(page)).toEqual(expected);
 });
 
-for (const width of [320, 375, 390, 1440]) test('directory, back, focus, deep link and dates at '+width, async ({page, context}) => {
+for (const width of [320, 375, 390, 1440]) test('directory, back, focus, deep link and dates at '+width, async ({page}) => {
   test.skip(before);
   await page.setViewportSize({width, height:900}); await login(page);
   const model = await invariants(page);
-  if (width === 320) await context.tracing.start({screenshots:true,snapshots:true,sources:false});
+  if (width === 320) await startAuditTrace(page);
   await page.goto('/#/more');
   const nav = page.getByRole('navigation',{name:'Secciones de mas opciones'});
   await expect(page.locator('.more-content')).toBeHidden();
@@ -137,12 +138,16 @@ for (const width of [320, 375, 390, 1440]) test('directory, back, focus, deep li
   const date=page.getByLabel('Fecha de corte',{exact:true});
   await date.focus(); await expect(date).toBeFocused();
   expect(await date.evaluate(el => getComputedStyle(el).outlineStyle)).toBe('solid');
-  await date.fill('2026-09-20'); await page.reload(); await expect(date).toHaveValue('2026-09-20');
+  await date.fill('2026-09-20'); await page.reload(); await expect(page.getByRole('heading',{name:titles[3],exact:true})).toBeVisible({timeout:30_000}); await expect(date).toHaveValue('2026-09-20');
   await date.fill('2027-01-01'); await expect(date).toHaveValue('2026-09-20');
   await date.fill('2026-10-20');
   await page.goto('/#/members');
   await expect(page.locator('[data-member-stat=complete]')).toHaveText('1 de 3');
-  await expect(page.getByText('Retirado',{exact:true})).toBeVisible();
+  const retiredRow=page.locator('[data-savings-member-row="'+fixture.retiredMemberId+'"]');
+  await expect(retiredRow.getByText('Fuera del periodo',{exact:true})).toBeVisible();
+  const today=await page.evaluate(async()=>{const {supabase}=await import('/src/lib/supabase.ts');const result=await supabase.rpc('fin_civil_today');if(result.error)throw Error(result.error.message);return result.data as string;});
+  await page.getByLabel('Fecha de corte',{exact:true}).fill(today);
+  await expect(retiredRow.getByText('Retirado',{exact:true})).toBeVisible();
   await page.getByLabel('Fecha de corte',{exact:true}).fill('2026-09-20');
   await expect(page.locator('[data-member-stat=complete]')).toHaveText('3 de 3');
   await expect(page.getByText(/El estado histórico.*no es verificable/)).toBeVisible();
@@ -164,7 +169,7 @@ for (const width of [320, 375, 390, 1440]) test('directory, back, focus, deep li
     await page.getByRole('dialog').getByRole('button',{name:/Cancelar|Volver/}).first().click();
   }
   expect(await invariants(page)).toEqual(model);
-  if(width===320) await context.tracing.stop({path:process.env.UX14_TRACE_PATH || 'incoming/ux14-2026-10-20/navigation-raw.zip'});
+
 });
 
 test('reduced motion, text at 200 percent, landscape and touch dates', async ({browser}) => {

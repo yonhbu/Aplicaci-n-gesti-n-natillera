@@ -407,9 +407,12 @@ export async function confirmBankYieldDistribution(input: { cycleId: string; cut
 }
 
 export async function listBankYieldDistributions(cycleId: string): Promise<BankYieldDistribution[]> {
-  const { data, error } = await supabase.from('bank_yield_distributions').select('*').eq('cycle_id', cycleId).order('cut_date', { ascending: false });
-  if (error) throw new Error(error.message);
-  return (data ?? []) as BankYieldDistribution[];
+  return fetchAllPages(async (from, to) => {
+    const { data, error } = await supabase.from('bank_yield_distributions').select('*').eq('cycle_id', cycleId)
+      .order('cut_date', { ascending: false }).order('id', { ascending: false }).range(from, to);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as BankYieldDistribution[];
+  });
 }
 
 export interface AdminWithdrawalPreview {
@@ -515,9 +518,12 @@ export async function payLoanProfitPeriods(input: { distributionId: string; idem
 }
 
 export async function listLoanProfitPeriodDistributions(cycleId: string): Promise<LoanProfitPeriodDistribution[]> {
-  const { data, error } = await supabase.from('loan_profit_period_distributions').select('*').eq('cycle_id', cycleId).order('created_at', { ascending: false });
-  if (error) throw new Error(error.message);
-  return (data ?? []) as LoanProfitPeriodDistribution[];
+  return fetchAllPages(async (from, to) => {
+    const { data, error } = await supabase.from('loan_profit_period_distributions').select('*').eq('cycle_id', cycleId)
+      .order('created_at', { ascending: false }).order('id', { ascending: false }).range(from, to);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as LoanProfitPeriodDistribution[];
+  });
 }
 
 export interface LoanProfitPeriodAllocation {
@@ -533,9 +539,12 @@ export interface LoanProfitPeriodAllocation {
 }
 
 export async function listLoanProfitPeriodAllocations(distributionId: string): Promise<LoanProfitPeriodAllocation[]> {
-  const { data, error } = await supabase.from('loan_profit_period_allocations').select('*').eq('distribution_id', distributionId);
-  if (error) throw new Error(error.message);
-  return (data ?? []) as LoanProfitPeriodAllocation[];
+  return fetchAllPages(async (from, to) => {
+    const { data, error } = await supabase.from('loan_profit_period_allocations').select('*').eq('distribution_id', distributionId)
+      .order('id', { ascending: true }).range(from, to);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as LoanProfitPeriodAllocation[];
+  });
 }
 
 export async function payLoanProfitAllocation(input: { allocationId: string; idempotencyKey: string; paidDate: string; liquidityLocation: LiquidityLocation; bankAccountId: string | null; reference: string }) {

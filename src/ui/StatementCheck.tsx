@@ -1,3 +1,4 @@
+import { CopInput } from './CopInput';
 import { useRef, useState } from 'react';
 import type { BankAccount, Cycle } from '../lib/types';
 import { formatCop, parseCop, toDatabaseMoney } from '../domain/money';
@@ -59,7 +60,7 @@ export function StatementCheck({ cycle, accounts = [], onSaved }: { cycle: Cycle
       {form === 'fine' ? <p>Solo registra multas ya recibidas. El 100 % se reconoce al fondo del administrador y entra al banco elegido.</p> : <p>Conserva la comparación anterior. No registra ingresos ni ajustes.</p>}
       <label>Cuenta del registro<select value={bank} onChange={e => setBank(e.target.value)} required disabled={busy}><option value="">Selecciona una cuenta</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.display_name}</option>)}</select></label>
       <label>Fecha del registro<input type="date" required value={date} onChange={e => setDate(e.target.value)} disabled={busy} /></label>
-      <label>{form === 'statement' ? 'Saldo del extracto' : 'Valor de la multa'}<input required inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} disabled={busy} /></label>
+      <label>{form === 'statement' ? 'Saldo del extracto' : 'Valor de la multa'}<CopInput required inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} disabled={busy} /></label>
       <label>{form === 'statement' ? 'Nota de la comparación' : 'Motivo de la multa'}<textarea required={form === 'fine'} value={note} onChange={e => setNote(e.target.value)} disabled={busy} /></label>
       <div className="statement-tools"><button type="submit" disabled={busy}>{busy ? 'Guardando…' : 'Guardar registro'}</button><button type="button" disabled={busy} onClick={() => setForm(null)}>Cancelar</button></div>
     </form> : null}

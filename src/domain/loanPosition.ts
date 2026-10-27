@@ -1,5 +1,5 @@
 import Decimal from 'decimal.js';
-import type {FinancialOperation,LoanContract,LoanPayment} from '../lib/types';
+import type {FinancialOperation,LoanContract,LoanPayment,LoanSchedule} from '../lib/types';
 
 /** Recorded satisfaction only: consolidated capital, dated receipts and dated settlement applications. */
 export function loanPosition(loan:LoanContract,payments:LoanPayment[],cut:string,operations:FinancialOperation[]=[]){
@@ -12,9 +12,42 @@ export function loanPosition(loan:LoanContract,payments:LoanPayment[],cut:string
  const receiptCapital=actual.reduce((s,p)=>s.plus(p.capital_amount),new Decimal(loan.legacy_paid_capital_amount??0));
  const pendingPrincipal=new Decimal(loan.principal).minus(receiptCapital).minus(settledCapital);
  const settled=settledCapital.gt(0)&&pendingPrincipal.isZero();
- const futureSettlement=loan.status==='paid'&&(loan.settlement_applications??[]).some(a=>a.effective_date>cut)&&pendingPrincipal.gt(0);
+ const futureSatisfaction=loan.status==='paid'&&pendingPrincipal.gt(0)&&(
+  (loan.settlement_applications??[]).some(a=>a.effective_date>cut)
+  ||payments.some(p=>p.loan_id===loan.id&&p.payment_date>cut&&new Decimal(p.capital_amount).gt(0))
+  ||!!loan.cancelled_at&&loan.cancelled_at>cut);
+ // Draft/cancelled contracts are not revived by an inferred payment state.
+ // For active/paid contracts, dated satisfaction outranks today's mutable status.
+ const receiptSatisfied=pendingPrincipal.isZero()&&actual.some(p=>new Decimal(p.capital_amount).gt(0));
+ const status=loan.status==='draft'||loan.status==='cancelled'?loan.status
+  :settled||receiptSatisfied?'paid' as const:futureSatisfaction?'active' as const:loan.status;
  return {actual,applications,settledCapital,settledInterest,receiptCapital,pendingPrincipal,settled,
-  status:settled?'paid' as const:futureSettlement?'active' as const:loan.status};
+  status};
+}
+
+/** Project recorded applications at the cut; never recalculate contractual dues or rates. */
+export function loanSchedulesAtCut(loan:LoanContract,schedules:LoanSchedule[],position:ReturnType<typeof loanPosition>):LoanSchedule[]{
+ const actualIds=new Set(position.actual.map(payment=>payment.id));
+ const receiptSatisfied=position.status==='paid'&&!position.settled&&position.pendingPrincipal.isZero()
+  &&position.actual.some(payment=>new Decimal(payment.capital_amount).gt(0));
+ return schedules.filter(schedule=>schedule.loan_id===loan.id).map(schedule=>{
+  if(schedule.legacy_declared_paid)return {...schedule,status:'paid'};
+  const applications=schedule.payment_applications?.filter(application=>actualIds.has(application.payment_id));
+  const capital=applications?applications.reduce((sum,a)=>sum.plus(a.capital_amount),new Decimal(0)):new Decimal(schedule.principal_paid??0);
+  const interest=applications?applications.reduce((sum,a)=>sum.plus(a.interest_amount),new Decimal(0)):new Decimal(schedule.interest_paid??0);
+  const fullyApplied=capital.gte(schedule.principal_due)&&interest.gte(schedule.interest_due)&&capital.plus(interest).gt(0);
+  let status=schedule.source_status??schedule.status;
+  // SQL cancels pending quotas on full repayment. Before that satisfaction the
+  // original schedule remains projected; a cancelled contract remains cancelled.
+  if(status==='cancelled'&&loan.status==='paid'&&position.status==='active')status='projected';
+  if(schedule.closed_by_settlement&&!position.settled)status=schedule.source_status??'projected';
+  if(fullyApplied)status='paid';
+  else if(position.settled||receiptSatisfied)status='cancelled';
+  // A paid projection without legacy evidence must follow its dated applications.
+  else if(applications&&status==='paid')status='projected';
+  return {...schedule,status,principal_paid:capital.toFixed(2),interest_paid:interest.toFixed(2),
+   closed_by_settlement:position.settled&&!fullyApplied};
+ });
 }
 
 /** Existing individual ledger positions less only settlement amounts lacking loan dimensions. */

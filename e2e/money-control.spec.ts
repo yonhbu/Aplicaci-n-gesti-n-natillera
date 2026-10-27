@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { expect,test,type Page } from '@playwright/test';
+import { expect,test,type Page } from './test-fixtures';
 const fixture=JSON.parse(readFileSync('incoming/money-control-2026-10-20/fixture.json','utf8')) as {email:string;cycleId:string;memberId:string};
 const api='http://127.0.0.1:55421';
 const faults=new WeakMap<Page,string[]>();
@@ -10,7 +10,7 @@ test.beforeEach(async({page})=>{
   page.on('response',response=>{if(response.status()>=400)list.push(response.status()+' '+new URL(response.url()).pathname);});
   await page.route('**/*',route=>{
     const origin=new URL(route.request().url()).origin;
-    if(['http://127.0.0.1:5198',api,'https://fonts.googleapis.com','https://fonts.gstatic.com'].includes(origin))return route.continue();
+    if(['http://127.0.0.1:5198',api,'https://fonts.googleapis.com','https://fonts.gstatic.com'].includes(origin))return route.fallback();
     return route.abort();
   });
 });
@@ -110,7 +110,7 @@ test('new loan receipt selects bank and one annulment restores cash and bank exa
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
     await page.getByRole('dialog').screenshot({path:info.outputPath('loan-destination-'+width+'.png')});
   }
-  const posted=page.waitForResponse(response=>response.url()===api+'/rest/v1/rpc/record_located_loan_payment');
+  const posted=page.waitForResponse(response=>response.url()===api+'/rest/v1/rpc/record_noted_loan_payment');
   await page.getByRole('button',{name:'Registrar Pago',exact:true}).click();expect((await posted).status()).toBe(200);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   const after=await query(page);

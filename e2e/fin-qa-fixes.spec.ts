@@ -1,12 +1,12 @@
-import {test,expect,type Page} from '@playwright/test';
+import {test,expect,type Page} from './test-fixtures';
 import {execFileSync} from 'node:child_process';
-const api='http://127.0.0.1:55421', app='http://127.0.0.1:5190';
+const api='http://127.0.0.1:55421', app=process.env.PLAYWRIGHT_BASE_URL??'http://127.0.0.1:5190';
 const cycle='a0150000-0000-4000-8000-000000000002';
 const runtime=JSON.parse(execFileSync(process.execPath,['node_modules/supabase/dist/supabase.js','status','--workdir','.supabase-test','-o','json'],{encoding:'utf8',stdio:['ignore','pipe','pipe']}));
 if(runtime.API_URL!==api)throw Error('Refusing any environment other than TEST');
 const publicKey=runtime.PUBLISHABLE_KEY??runtime.ANON_KEY;
 async function login(page:Page){
-  await page.route('**/*',route=>[api,app,'https://fonts.googleapis.com','https://fonts.gstatic.com'].includes(new URL(route.request().url()).origin)?route.continue():route.abort());
+  await page.route('**/*',route=>[api,app,'https://fonts.googleapis.com','https://fonts.gstatic.com'].includes(new URL(route.request().url()).origin)?route.fallback():route.abort());
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.getByLabel('Correo autorizado').fill('qa-audit-2026@example.test');
   const response=page.waitForResponse(r=>r.url()===api+'/auth/v1/otp');
@@ -35,7 +35,7 @@ async function more(page:Page,name:string){await page.getByRole('navigation',{na
 test.beforeEach(async({page})=>{await login(page);});
 test('QA010: frozen new rights and preserved historical remainder block unreviewed distribution',async({page})=>{
   await more(page,'Rendimientos');await page.getByRole('button',{name:'Calcular reparto',exact:true}).click();
-  await expect(page.getByText(/históricos pendientes de conciliación explícita/)).toBeVisible();
+  await expect(page.getByText(/sin distribución individual/)).toBeVisible();
   await expect(page.getByRole('button',{name:'Confirmar reparto',exact:true})).toBeDisabled();
   const p=await rest(page,'rpc/preview_bank_yield_distribution',{p_cycle_id:cycle,p_cut_date:'2026-12-05'});
   expect(p.status).toBe(200);expect(p.data.pool).toBe(p.data.net_received-p.data.recognized_in_withdrawals-p.data.already_distributed);
@@ -59,7 +59,7 @@ test('QA008: confirmed EA prepayment retains 133.14 quotation and exact total',a
   expect((await rest(page,'loan_payments?loan_id=eq.'+loan.id+'&kind=eq.prepayment')).data).toHaveLength(1);
 });
 test('QA007: withdrawal form exposes protected reserve and requires a real source',async({page})=>{
-  await more(page,'Mi ganancia como administrador');await page.getByRole('button',{name:'Registrar retiro',exact:true}).click();const dialog=page.getByRole('dialog');
+  await more(page,'Administración');await page.getByRole('button',{name:'Registrar retiro',exact:true}).click();const dialog=page.getByRole('dialog');
   await expect(dialog).toContainText('12 % EA');await expect(dialog.getByRole('button',{name:'Registrar retiro',exact:true})).toBeDisabled();
   const preview=await rest(page,'rpc/preview_admin_withdrawal',{p_cycle_id:cycle,p_effective_date:'2026-10-16'});expect(preview.status).toBe(200);expect(preview.data.available).toBeLessThanOrEqual(preview.data.admin_balance);expect(preview.data.ea_reserve).toBeGreaterThanOrEqual(0);
   await expect(dialog.getByText('Efectivo',{exact:true})).toBeVisible();await dialog.getByRole('button',{name:'Cancelar',exact:true}).click();
