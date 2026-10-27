@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { userSafeError } from './userMessages';
+import { PAYMENT_NOTES_SCHEMA_REQUIRED, userSafeError } from './userMessages';
 
 describe('known financial validation messages', () => {
   it('explains the polla quota without exposing arbitrary backend text', () => {
@@ -31,4 +31,12 @@ describe('known financial validation messages', () => {
     expect(userSafeError(new Error('La liquidacion retroactiva tiene cobros posteriores; genere politica explicita antes de confirmar.'))).toContain('revisión financiera');
     expect(userSafeError(new Error('Liquidez insuficiente para pagar la liquidacion.'))).toContain('No hay dinero suficiente');
   });
+});
+
+
+it('muestra la actualización requerida sin ocultar que no se confirmó el pago', () => {
+  expect(userSafeError(new Error(PAYMENT_NOTES_SCHEMA_REQUIRED))).toBe(PAYMENT_NOTES_SCHEMA_REQUIRED);
+});
+it('no expone mensajes arbitrarios del servidor al permitir el aviso de versión', () => {
+  expect(userSafeError(new Error('TEST_ONLY_INTERNAL_SERVER_DETAIL'))).not.toContain('TEST_ONLY_INTERNAL_SERVER_DETAIL');
 });

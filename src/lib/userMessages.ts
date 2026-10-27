@@ -1,5 +1,8 @@
+export const PAYMENT_NOTES_SCHEMA_REQUIRED = 'La base de datos no expone las RPC de notas de pago. Requiere la migración 20261108000100 y sus permisos antes de registrar este cobro. No se confirmó el pago ni se intentó otro cobro sin la nota.';
+
 export function userSafeError(error: unknown): string {
   if (error instanceof Error) {
+    if (error.message === PAYMENT_NOTES_SCHEMA_REQUIRED) return PAYMENT_NOTES_SCHEMA_REQUIRED;
     if (/^(El retiro supera el dinero personal documentado|La clave del movimiento personal|Fecha o ciclo del movimiento personal|Indique direccion, referencia|La referencia personal ya fue registrada)/.test(error.message)) return error.message;
     if (error.message === 'El destino del cobro no coincide con el intento original.') return 'El cobro pendiente corresponde a otra cuenta o a efectivo. Resuelve ese intento antes de cambiar su destino.';
     if (/^(La cuenta final ya no admite|Fecha del pago complementario invalida|Indique la referencia del dinero recibido|Cuenta bancaria no disponible|Esta cuenta final no tiene faltante|La referencia bancaria ya fue registrada|La clave del pago complementario tiene otro contenido|El pago complementario ya respalda|La correccion de ubicacion ya tiene otro contenido|Este cobro ya tiene ubicacion corregida|El cobro no esta registrado integramente|Hay cuentas finales confirmadas|Seleccione un cobro e indique|Anule el grupo completo de correccion|Primero anule la correccion de ubicacion|No hay correccion de ubicacion para anular)/.test(error.message)) return error.message;

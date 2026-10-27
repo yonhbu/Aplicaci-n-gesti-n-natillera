@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, relative } from 'node:path';
+import { postgresCredentialLocations } from './lib/source-secret-findings.mjs';
 
 const root = process.cwd();
 const forbiddenClientKeyPattern = /VITE_SUPABASE_(SECRET|SERVICE|ADMIN|PRIVATE|JWT)_?KEY/i;
@@ -17,7 +18,7 @@ const ignoredDirs = new Set([
   'playwright-report',
   'test-results'
 ]);
-const sourceExtensions = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json', '.html', '.css', '.toml', '.sql', '.md', '.webmanifest']);
+const sourceExtensions = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json', '.html', '.css', '.toml', '.sql', '.md', '.webmanifest', '.yml', '.yaml']);
 const failures = [];
 
 function trackedFiles() {
@@ -64,6 +65,9 @@ function walk(dir) {
     }
 
     const text = readFileSync(path, 'utf8');
+    for (const finding of postgresCredentialLocations(text)) {
+      failures.push(`${rel}:${finding.line}: URI PostgreSQL con contraseña incrustada; no se muestra el valor`);
+    }
     if (forbiddenClientKeyPattern.test(text)) {
       failures.push(`${rel}: nombre VITE_* prohibido para claves elevadas de Supabase`);
     }

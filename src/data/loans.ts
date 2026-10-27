@@ -1,6 +1,14 @@
 import { supabase } from '../lib/supabase';
 import type { LoanContract, LoanPayment, LoanPaymentApplication, LoanSchedule, LoanSettlementEffect } from '../lib/types';
 import { fetchAllPages } from './pagination';
+import { PAYMENT_NOTES_SCHEMA_REQUIRED } from '../lib/userMessages';
+
+function loanPaymentRpcError(error: { code?: string; message: string }, usesNotes: boolean) {
+  if (usesNotes && error.code === 'PGRST202') {
+    return new Error(PAYMENT_NOTES_SCHEMA_REQUIRED);
+  }
+  return new Error(error.message);
+}
 
 export async function listLoans(cycleId: string): Promise<LoanContract[]> {
   const loans = await fetchAllPages(async (from, to) => {
@@ -128,7 +136,7 @@ export async function recordLoanPayment(input: {
     ...(input.bankAccountId === undefined && input.note === undefined ? {} : { p_bank_account_id: input.bankAccountId ?? null, p_quote_hash: null }),
     ...(input.note === undefined ? {} : { p_note: input.note })
   });
-  if (error) throw new Error(error.message);
+  if (error) throw loanPaymentRpcError(error, input.note !== undefined);
   return data as LoanPayment;
 }
 
@@ -166,6 +174,6 @@ export async function confirmLoanPrepayment(loanId: string, date: string, idempo
     p_quote_hash: quoteHash,
     ...(note !== undefined ? { p_bank_account_id: bankAccountId ?? null, p_note: note } : bankAccountId === undefined ? {} : { p_bank_account_id: bankAccountId, p_amount: null, p_capital_amount: null, p_interest_amount: null, p_kind: 'prepayment' })
   });
-  if (error) throw new Error(error.message);
+  if (error) throw loanPaymentRpcError(error, note !== undefined);
   return data as LoanPayment;
 }

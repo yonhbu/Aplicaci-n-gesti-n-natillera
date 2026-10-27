@@ -20,7 +20,7 @@ test.beforeEach(async ({ page }) => {
     await route.fallback();
   });
 });
-async function login(page: Page, email = f.email, heading = 'Inicio') {
+async function login(page: Page, email = f.email, heading = 'Inicio', trace = true) {
   await page.goto('/');
   await page.getByLabel('Correo autorizado').fill(email);
   const sent = page.waitForResponse(r => r.url() === api + '/auth/v1/otp');
@@ -39,7 +39,7 @@ async function login(page: Page, email = f.email, heading = 'Inicio') {
     const modulePath = '/src/lib/supabase.ts'; const { supabase } = await import(/* @vite-ignore */ modulePath);
     return supabase.supabaseUrl;
   })).toBe(api);
-  await startAuditTrace(page);
+  if (trace) await startAuditTrace(page);
 }
 async function state(page: Page) {
   return page.evaluate(async fixture => {
@@ -64,6 +64,38 @@ async function detail(page: Page) {
   await page.locator(`[data-loan-row="${f.loanId}"]`).getByRole('button', { name: 'Ver detalle', exact: true }).click();
   return page.locator(`[data-loan-detail="${f.loanId}"]`);
 }
+
+test('Migración de notas pendiente: aviso explícito, nota conservada y ningún cobro alternativo', async ({ page }, info) => {
+  await login(page, f.email, 'Inicio', false);
+  const before = await state(page);
+  const writes: string[] = [], errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('request', request => {
+    if (/\/rpc\/(record_(?:noted_|located_)?loan_payment|confirm_(?:noted_)?loan_prepayment)$/.test(request.url())) writes.push(request.url().split('/').at(-1)!);
+  });
+  // Model the old PostgREST schema without changing even the disposable TEST schema.
+  await page.route(api + '/rest/v1/rpc/record_noted_loan_payment', route => route.fulfill({
+    status: 404, contentType: 'application/json',
+    body: JSON.stringify({ code: 'PGRST202', message: 'Function not found in schema cache', details: null, hint: null })
+  }));
+  const panel = await detail(page);
+  await panel.getByRole('button', { name: 'Registrar pago', exact: true }).click();
+  const sheet = page.getByRole('dialog');
+  await sheet.getByRole('button', { name: 'Efectivo', exact: true }).click();
+  await sheet.getByLabel('Pago', { exact: true }).fill('200000');
+  await sheet.getByLabel('Capital', { exact: true }).fill('200000');
+  await sheet.getByLabel('Interés', { exact: true }).fill('0');
+  await sheet.getByLabel('Fecha del pago', { exact: true }).fill('2026-10-26');
+  const note = 'TEST_ONLY_NOTA_PRESERVADA_SIN_CONFIRMAR';
+  await sheet.getByLabel('Nota del pago', { exact: true }).fill(note);
+  await sheet.getByRole('button', { name: 'Registrar Pago', exact: true }).click();
+  await expect(sheet).toContainText('Requiere la migración 20261108000100');
+  await expect(sheet.getByLabel('Nota del pago', { exact: true })).toHaveValue(note);
+  expect(writes).toEqual(['record_noted_loan_payment']);
+  expect(await state(page)).toEqual(before);
+  expect(errors).toEqual([]);
+  await page.screenshot({ path: info.outputPath('payment-notes-schema-required.png'), fullPage: true });
+});
 
 test('P011: abono 200.000 deja cuota final pendiente 325.000, nunca 525.000 como saldo', async ({ page }, info) => {
   await login(page);
