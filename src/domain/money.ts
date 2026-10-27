@@ -50,7 +50,7 @@ export function formatCop(value: Decimal | string | number, fractionDigits = 0):
     currency: 'COP',
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits
-  }).format(decimal.toNumber());
+  }).format(decimal.toDecimalPlaces(fractionDigits).isZero() ? 0 : decimal.toNumber());
 }
 
 export function roundCurrency(value: Decimal): Decimal {

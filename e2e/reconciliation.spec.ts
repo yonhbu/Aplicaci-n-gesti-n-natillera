@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
+import { startAuditTrace, finishAuditTrace } from './audit-safe-trace';
 const fixture = JSON.parse(readFileSync('incoming/reconciliation-synthetic-2026-10-17/fixture.json', 'utf8')) as { cycleId: string; email: string };
 import { expect, test, type Page } from '@playwright/test';
 const app = 'http://127.0.0.1:5198', api = 'http://127.0.0.1:55421';
 const faults = new WeakMap<Page, string[]>();
-const tracing = new WeakSet<Page>();
 test.beforeEach(async ({ page }) => {
   const list: string[] = []; faults.set(page, list);
   page.on('pageerror', error => list.push(error.message));
@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
     return route.abort();
   });
 });
-test.afterEach(async ({ page, context }, info) => { if (tracing.has(page)) await context.tracing.stop({ path: info.outputPath('trace.zip') }); expect(faults.get(page)).toEqual([]); });
+test.afterEach(async ({ page }, info) => { await finishAuditTrace(page, info); expect(faults.get(page)).toEqual([]); });
 async function login(page: Page) {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.getByLabel('Correo autorizado').fill(fixture.email);
@@ -30,7 +30,7 @@ async function login(page: Page) {
   // A read from the real browser client proves the destination before any mutation.
   const destination = await page.evaluate(async () => { const { supabase } = await import('/src/lib/supabase.ts'); return (supabase as unknown as { supabaseUrl: string }).supabaseUrl; });
   expect(destination).toBe(api);
-  await page.context().tracing.start({ screenshots: true, snapshots: true, sources: true }); tracing.add(page);
+  await startAuditTrace(page);
 }
 async function bank(page: Page) {
   await page.getByRole('navigation', { name: 'Secciones principales' }).getByRole('button', { name: 'Más', exact: true }).click();

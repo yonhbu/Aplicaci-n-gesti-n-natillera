@@ -2,6 +2,10 @@
 
 Aplicacion privada para gestionar la base de Natillera con React, TypeScript, Vite y Supabase.
 
+Auditoría funcional 2026-10-26: correcciones locales y evidencia en [docs/qa/INFORME-AUDITORIA.md](docs/qa/INFORME-AUDITORIA.md), estado `READY_FOR_REVIEW`. Consulta [reglas vigentes](docs/BUSINESS_RULES.md) y [setup de auditoría sin dotenv](docs/LOCAL_SETUP.md). Los alcances A/B/C/D descritos abajo son antecedentes; no representan por sí solos el estado posterior de FIN, conciliaciones, reversos y respaldo `natillera-manager.workspace.v3`.
+
+Comandos de esta entrega: `npm run qa:functional:unit`, `npm run qa:functional:all`, `npm run qa:functional:build` y `npm run test:rls`. `qa:functional:e2e` limita la ejecución a escenarios nuevos. La configuración E2E general conserva otras suites históricas que requieren sus fixtures específicos.
+
 Estado actual: `NAT-HU-001`, `NAT-HU-002`, `NAT-HU-003`, `NAT-HU-004`, `NAT-HU-005` y `NAT-HU-006` en `READY_FOR_REVIEW`.
 
 Correccion ABC 2026-10-09: se cerraron invariantes de hash de previsualizacion, cortes historicos, idempotencia de reintentos, reversos dependientes, politica aprobada de reparto y centavos residuales.
@@ -80,7 +84,7 @@ npm run legacy:import-2026 -- --json <ruta-json-real-fuera-de-git> --csv <ruta-c
 
 ## Configuracion local
 
-Para DEV recuperado, inicia Supabase local y ejecuta `npm run dev`: resuelve la URL y clave pública en memoria y no abre dotenv del PC anterior. `npm run dev:test` apunta al TEST independiente. [Recuperación y consolidación del equipo](docs/MIGRACION_PC_Y_DEV_2026-10-20.md). No uses correos reales de terceros en pruebas. El bootstrap es para instalaciones vacías; no repetirlo ni añadir datos demo a la base operativa restaurada.
+Para DEV recuperado, inicia Supabase local y ejecuta `npm run dev`: resuelve la URL y clave pública en memoria y no abre dotenv del PC anterior. `npm run dev:test` apunta al TEST independiente. [Setup local y auditoría](docs/LOCAL_SETUP.md). No uses correos reales de terceros en pruebas. El bootstrap es para instalaciones vacías; no repetirlo ni añadir datos demo a la base operativa restaurada.
 
 ## Seguridad
 

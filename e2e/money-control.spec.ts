@@ -110,7 +110,7 @@ test('new loan receipt selects bank and one annulment restores cash and bank exa
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
     await page.getByRole('dialog').screenshot({path:info.outputPath('loan-destination-'+width+'.png')});
   }
-  const posted=page.waitForResponse(response=>response.url()===api+'/rest/v1/rpc/record_located_loan_payment');
+  const posted=page.waitForResponse(response=>response.url()===api+'/rest/v1/rpc/record_noted_loan_payment');
   await page.getByRole('button',{name:'Registrar Pago',exact:true}).click();expect((await posted).status()).toBe(200);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   const after=await query(page);

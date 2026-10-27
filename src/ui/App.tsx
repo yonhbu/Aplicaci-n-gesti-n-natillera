@@ -1,3 +1,4 @@
+import { CopInput } from './CopInput';
 import { createContext, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Session } from '@supabase/supabase-js';
@@ -85,7 +86,7 @@ import { FinancialCut, FinancialCutField, FinancialCutPicker, useFinancialCut } 
 import { MoneyReconstruction } from './MoneyReconstruction';
 import { originalPrincipalAtCut, reconstructMoney } from '../domain/financialReconstruction';
 import { bankPosition } from '../domain/bankPosition';
-import { loanPosition } from '../domain/loanPosition';
+import { loanPosition, loanSchedulesAtCut } from '../domain/loanPosition';
 import { BankPositionCard, BankInterestHistory } from './BankPositionCard';
 import { displayDate } from './displayDate';
 import { CompletionReceipt } from './CompletionReceipt';
@@ -1179,15 +1180,14 @@ const weekdayNames = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'vie
 function buildLoanRows(loans: LoanContract[], payments: LoanPayment[], schedules: LoanSchedule[], cut = todayCivilDate(), operations: FinancialOperation[] = []) {
   return loans.map((loan) => {
     const position = loanPosition(loan, payments, cut, operations);
-    const allPayments = payments.filter((payment) => payment.loan_id === loan.id);
-    const postedPayments = allPayments.filter((payment) => payment.status !== 'reversed');
+    const actualPaymentIds = new Set(position.actual.map(payment => payment.id));
+    const allPayments = payments.filter((payment) => payment.loan_id === loan.id && payment.payment_date <= cut)
+      .map(payment => ({ ...payment, status: actualPaymentIds.has(payment.id) ? 'posted' as const : 'reversed' as const }));
     const paidCapital = position.receiptCapital.plus(position.settledCapital);
     const paidInterest = position.actual.reduce((sum, payment) => sum.plus(payment.interest_amount), new Decimal(loan.legacy_paid_interest_amount ?? 0)).plus(position.settledInterest);
-    const postedInterest = postedPayments.reduce((sum, payment) => sum.plus(payment.interest_amount), new Decimal(0));
-    const loanSchedules = schedules
-      .filter((schedule) => schedule.loan_id === loan.id && (schedule.status !== 'cancelled' || schedule.closed_by_settlement))
-      .map(schedule => position.settled && !isSchedulePaid(schedule) ? {...schedule, status: 'cancelled' as const, closed_by_settlement: true}
-        : schedule.closed_by_settlement && !position.settled ? {...schedule, status: schedule.source_status ?? 'projected', closed_by_settlement: false} : schedule)
+    const postedInterest = position.actual.reduce((sum, payment) => sum.plus(payment.interest_amount), new Decimal(0));
+    const loanSchedules = loanSchedulesAtCut(loan, schedules, position)
+      .filter((schedule) => schedule.status !== 'cancelled' || schedule.closed_by_settlement)
       .sort((left, right) => left.installment_number - right.installment_number);
     const nextSchedule = loanSchedules.find((schedule) => schedule.status === 'projected' && !schedule.legacy_declared_paid);
     const paidInstallments = loanSchedules.filter(isSchedulePaid).length;
@@ -1391,7 +1391,7 @@ function HomeDashboard({
                     <span className="row-sub">{info.detail}</span>
                   </span>
                   <span className="row-end">
-                    <span className="row-amount">{row.nextSchedule ? formatCop(scheduleTotal(row.nextSchedule)) : formatCop(row.pendingPrincipal)}</span>
+                    <span className="row-amount">{row.nextSchedule ? formatCop(scheduleRemaining(row.nextSchedule).total) : formatCop(row.pendingPrincipal)}</span>
                     <StatusChip tone={info.tone}>{info.label}</StatusChip>
                   </span>
                 </button>
@@ -2271,7 +2271,7 @@ function MemberForm({
       </label>
       <label>
         Cuota mensual
-        <input value={monthlyQuota} onChange={(event) => setMonthlyQuota(event.target.value)} required disabled={pending} inputMode="decimal" placeholder="100.000" />
+        <CopInput value={monthlyQuota} onChange={(event) => setMonthlyQuota(event.target.value)} required disabled={pending} inputMode="decimal" placeholder="100.000" />
         <small className="field-hint">{editing ? 'Si ya tiene aportes, la cuota y el rango no se pueden cambiar hacia atrás.' : 'Ejemplo: 100.000'}</small>
       </label>
       <div className="form-pair">
@@ -2418,7 +2418,7 @@ function ContributionForm({
       <div className="amount-group">
         <label className={fieldErrors.amount ? 'field field-invalid' : 'field'}>
           Monto recibido
-          <input className="input-amount" value={amountText} onChange={(event) => setAmountText(event.target.value)} required disabled={pending} inputMode="decimal" placeholder="150.000" />
+          <CopInput className="input-amount" value={amountText} onChange={(event) => setAmountText(event.target.value)} required disabled={pending} inputMode="decimal" placeholder="150.000" />
           {fieldErrors.amount ? <small className="field-error">{fieldErrors.amount}</small> : null}
         </label>
         {selected ? (
@@ -2631,6 +2631,7 @@ export function LoansPanel({
   const [capitalAmount, setCapitalAmount] = useState('');
   const [interestAmount, setInterestAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState(todayCivilDate());
+  const [paymentNote, setPaymentNote] = useState('');
   const [receiptTo, setReceiptTo] = useState<MoneySheetLocation>({ location: bankAccounts.length ? 'bank' : 'cash', bankAccountId: bankAccounts[0]?.id ?? '' });
   const [paymentKind, setPaymentKind] = useState<'regular' | 'prepayment'>('regular');
   const [prepaymentQuote, setPrepaymentQuote] = useState<LoanPrepaymentQuote | null>(null);
@@ -2648,8 +2649,12 @@ export function LoansPanel({
   const today = todayCivilDate();
   const financialCut = useFinancialCut();
   const cut = financialCut.cutDate || today;
+  const serverToday = useServerCivilToday();
+  const latestCut = serverToday < cycle.closes_on ? serverToday : cycle.closes_on;
+  const historicalCut = cut < latestCut;
+  const historicalMessage = 'Consulta histórica: cambia la fecha de corte al último día disponible para registrar pagos o desembolsos.';
   const loanRows = useMemo(() => buildLoanRows(loans, payments, schedules, cut, operations), [loans, payments, schedules, cut, operations]);
-  const described = loanRows.map((row) => ({ row, info: describeLoan(row, today) }));
+  const described = loanRows.map((row) => ({ row, info: describeLoan(row, cut) }));
   const urgency: Record<LoanTone, number> = { late: 0, review: 1, soon: 2, draft: 3, ok: 4, paid: 5, cancelled: 6 };
   // Los filtros nuevos ('late', 'today') solo seleccionan la clasificación existente de describeLoan; 'due' conserva su predicado.
   const filterMatches = ({ row, info }: { row: LoanRow; info: { tone: LoanTone; days: number | null } }, value: LoanFilter) => {
@@ -2658,8 +2663,8 @@ export function LoansPanel({
     if (value === 'open') return tone !== 'paid' && tone !== 'cancelled';
     if (value === 'due') return tone === 'late' || tone === 'soon' || tone === 'review';
     // 'Vencidos' y 'Paga hoy' usan las mismas cuotas abiertas que los resúmenes: un préstamo con una cuota vencida y otra que vence hoy aparece en ambos.
-    if (value === 'late') return openInstallments(row, today).overdue.length > 0;
-    if (value === 'today') return openInstallments(row, today).dueToday.length > 0;
+    if (value === 'late') return openInstallments(row, cut).overdue.length > 0;
+    if (value === 'today') return openInstallments(row, cut).dueToday.length > 0;
     if (value === 'ok') return tone === 'ok';
     return tone === 'paid';
   };
@@ -2680,11 +2685,11 @@ export function LoansPanel({
   const activeLoanRows = loanRows.filter((row) => row.loan.status === 'active');
   const cartera = ledgerEntries ? reconstructMoney(operations,ledgerEntries,cut).receivable : activeLoanRows.reduce((sum, row) => sum.plus(row.pendingPrincipal), new Decimal(0));
   const financialContext = useContext(CorrectionContext);
-  const lentPrincipal = originalPrincipalAtCut(loans, financialContext?.operations ?? [], today);
+  const lentPrincipal = originalPrincipalAtCut(loans, financialContext?.operations ?? [], cut);
   const interestCollected = ledgerEntries ? collectedLoanInterest(operations,ledgerEntries,cut,settlements).total : loanRows.reduce((sum, row) => sum.plus(row.postedInterest).plus(row.legacyInterest).plus(row.settledInterest), new Decimal(0));
   // Cuotas abiertas vencidas / que vencen hoy: se suma lo que falta (scheduleRemaining) de cada cuota; no se recalcula ningún interés.
   // Si algún préstamo activo no tiene cronograma, las cifras son un mínimo conocido y se presentan como «No disponible».
-  const collections = summarizeCollections(loanRows, today);
+  const collections = summarizeCollections(loanRows, cut);
   const collectionsKnown = collections.complete;
   const unscheduledNote = `${collections.unscheduledLoans} ${collections.unscheduledLoans === 1 ? 'préstamo' : 'préstamos'} sin cronograma`;
   const selectedRow = loanRows.find(({ loan }) => loan.id === selectedLoanId);
@@ -2718,7 +2723,7 @@ export function LoansPanel({
     }, 250);
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [paymentOpen, payMode, automaticApplication, selectedLoanId, paymentDate, paymentAmount, applicationKey, cycle.id]);
-  const selectedInfo = selectedRow ? describeLoan(selectedRow, today) : null;
+  const selectedInfo = selectedRow ? describeLoan(selectedRow, cut) : null;
   const methodLabels = { amortized: 'Amortizado', fixed_interest: 'Interés fijo', interest_only: 'Solo interés' };
   const paymentSummary = (() => {
     try {
@@ -2787,12 +2792,16 @@ export function LoansPanel({
   }
 
   function openPayment(mode: PayMode, row: LoanRow | undefined = selectedRow) {
+    if (pending) return;
+    if (historicalCut) { setLoanError(historicalMessage); return; }
     setPaymentOpen(true);
+    setPaymentNote('');
     const attempt = row ? readPendingFinancialOperation(`loan:${mode === 'total' ? 'prepayment' : 'payment'}:${cycle.id}:${row.loan.id}`) : null;
     if (attempt) {
       let saved;
       try { saved = JSON.parse(attempt.canonicalPayload); } catch { setLoanError('No se pudo recuperar el cobro pendiente. Revisa su estado antes de registrar otro.'); return; }
       if (saved.loanId === row?.loan.id) {
+        setPaymentNote(saved.note ?? '');
         setReceiptTo({ location: saved.bankAccountId ? 'bank' : 'cash', bankAccountId: saved.bankAccountId ?? '' });
         setPaymentDate(saved.paymentDate);
         if (mode === 'total' && saved.quote) {
@@ -2881,11 +2890,13 @@ export function LoansPanel({
   }
 
   function openDisburse(loan: LoanContract) {
+    if (historicalCut) { setLoanError(historicalMessage); return; }
     setLoanError('');
     setDisburseTarget({ loanId: loan.id, date: loan.start_date || todayCivilDate() });
   }
 
   async function disburseLoan(loanId: string, disbursementDate: string) {
+    if (historicalCut) { setLoanError(historicalMessage); return; }
     await runPendingFinancialAction({
       scope: `loan:disburse:${cycle.id}:${loanId}`,
       payload: { loanId, disbursementDate },
@@ -2904,6 +2915,7 @@ export function LoansPanel({
 
   async function submitPayment(event: React.FormEvent) {
     event.preventDefault();
+    if (historicalCut) { setLoanError(historicalMessage); return; }
     if (receiptTo.location === 'bank' && !receiptTo.bankAccountId) return;
     if (automaticApplication && paymentPlanKey !== applicationKey) return;
     setLoanError('');
@@ -2924,15 +2936,16 @@ export function LoansPanel({
     catch { setLoanError('No se pudo recuperar el cobro pendiente. Revisa su estado antes de registrar otro.'); return; }
     const withDestination = !originalPayload || Object.hasOwn(originalPayload, 'bankAccountId');
     const destination = receiptTo.location === 'bank' ? receiptTo.bankAccountId : null;
-    const payload = { loanId: selectedLoanId, paymentDate, ...amounts, kind: paymentKind, ...(withDestination ? { bankAccountId: destination } : {}) };
+    const withNote = !originalPayload || Object.hasOwn(originalPayload, 'note');
+    const payload = { loanId: selectedLoanId, paymentDate, ...amounts, kind: paymentKind, ...(withDestination ? { bankAccountId: destination } : {}), ...(withNote ? { note: paymentNote.trim() || null } : {}) };
     await runPendingFinancialAction({
       scope: `loan:payment:${cycle.id}:${selectedLoanId}`,
       payload,
       setPending,
       onSaved: async () => {
+        await onSaved();
         setPrepaymentQuote(null);
         setPaymentOpen(false);
-        await onSaved();
       },
       onError: (error) => {
         setLoanError(userSafeError(error));
@@ -2946,12 +2959,14 @@ export function LoansPanel({
         capitalAmount: payload.capitalAmount,
         interestAmount: payload.interestAmount,
         kind: paymentKind,
-        bankAccountId: withDestination ? destination : undefined
+        bankAccountId: withDestination ? destination : undefined,
+        note: withNote ? payload.note : undefined
       })
     });
   }
 
   async function quotePrepayment(loanId = selectedLoanId) {
+    if (historicalCut) { setLoanError(historicalMessage); return; }
     if (!loanId) {
       return;
     }
@@ -2973,6 +2988,7 @@ export function LoansPanel({
   }
 
   async function submitQuotedPrepayment() {
+    if (historicalCut) { setLoanError(historicalMessage); return; }
     if (!selectedLoanId || !prepaymentQuote || receiptTo.location === 'bank' && !receiptTo.bankAccountId) {
       return;
     }
@@ -2982,20 +2998,21 @@ export function LoansPanel({
     catch { setLoanError('No se pudo recuperar el cobro pendiente. Revisa su estado antes de registrar otro.'); return; }
     const withDestination = !originalPayload || Object.hasOwn(originalPayload, 'bankAccountId');
     const destination = receiptTo.location === 'bank' ? receiptTo.bankAccountId : null;
+    const withNote = !originalPayload || Object.hasOwn(originalPayload, 'note');
     await runPendingFinancialAction({
       scope: `loan:prepayment:${cycle.id}:${selectedLoanId}`,
-      payload: { loanId: selectedLoanId, paymentDate, quote: prepaymentQuote, ...(withDestination ? { bankAccountId: destination } : {}) },
+      payload: { loanId: selectedLoanId, paymentDate, quote: prepaymentQuote, ...(withDestination ? { bankAccountId: destination } : {}), ...(withNote ? { note: paymentNote.trim() || null } : {}) },
       setPending,
       onSaved: async () => {
+        await onSaved();
         setPrepaymentQuote(null);
         setPaymentOpen(false);
-        await onSaved();
       },
       onError: (error) => {
         setLoanError(userSafeError(error));
         onError(error);
       },
-      action: (idempotencyKey) => confirmLoanPrepayment(selectedLoanId, paymentDate, idempotencyKey, prepaymentQuote.quote_hash, withDestination ? destination : undefined)
+      action: (idempotencyKey) => confirmLoanPrepayment(selectedLoanId, paymentDate, idempotencyKey, prepaymentQuote.quote_hash, withDestination ? destination : undefined, withNote ? paymentNote.trim() || null : undefined)
     });
   }
 
@@ -3032,6 +3049,7 @@ export function LoansPanel({
         </div>
       </div>
       {loanError && !paymentOpen && !newLoanOpen ? <InlineNotice tone="danger">{loanError}</InlineNotice> : null}
+      {historicalCut && !selectedRow ? <InlineNotice tone="neutral">{historicalMessage}</InlineNotice> : null}
 
       {!selectedRow ? (
         <>
@@ -3127,16 +3145,18 @@ export function LoansPanel({
                 </div>
               ) : null}
               <div className="next-actions">
-                <Button type="button" onClick={() => openPayment(next ? 'cuota' : 'other')}>Registrar pago</Button>
-                <button type="button" className="link-button" onClick={() => openPayment('total')}>Pagar todo</button>
+                <Button type="button" disabled={pending || historicalCut} aria-describedby={historicalCut ? 'loan-history-payment-help' : undefined} onClick={() => openPayment(next ? 'cuota' : 'other')}>Registrar pago</Button>
+                <button type="button" className="link-button" disabled={pending || historicalCut} aria-describedby={historicalCut ? 'loan-history-payment-help' : undefined} onClick={() => openPayment('total')}>Pagar todo</button>
               </div>
+              {historicalCut ? <p id="loan-history-payment-help" className="field-hint">{historicalMessage}</p> : null}
             </div>
           ) : null}
           {selectedRow.loan.status === 'draft' ? (
             <div className="next-payment">
               <span className="next-label">Falta desembolsar</span>
               <p className="muted">Al desembolsar salen {formatCop(selectedRow.loan.principal)} de caja. Confirmarás la fecha antes de guardar.</p>
-              <Button type="button" onClick={() => openDisburse(selectedRow.loan)} disabled={pending}>Desembolsar</Button>
+              {historicalCut ? <p className="field-hint">{historicalMessage}</p> : null}
+              <Button type="button" onClick={() => openDisburse(selectedRow.loan)} disabled={pending || historicalCut}>Desembolsar</Button>
             </div>
           ) : null}
 
@@ -3176,9 +3196,9 @@ export function LoansPanel({
                       <span className={`schedule-check${paid ? ' is-paid' : ''}${isNext ? ' is-next' : ''}`} aria-hidden="true">{paid ? '✓' : ''}</span>
                       <span className="row-main">
                         <strong>Cuota {schedule.installment_number} · {formatDayMonth(schedule.due_date)}</strong>
-                        <span className="row-sub">{schedule.closed_by_settlement ? 'Extinguida por cuenta final · no se cobran intereses futuros' : <>{paid ? 'Pagada · ' : scheduleRemaining(schedule).total.lt(scheduleTotal(schedule)) ? `Pago parcial · faltan ${formatCop(scheduleRemaining(schedule).total)} · ` : ''}Cap. {formatCop(schedule.principal_due)} · Int. {formatCop(schedule.interest_due)}</>}</span>
+                        <span className="row-sub">{schedule.closed_by_settlement ? 'Extinguida por cuenta final · no se cobran intereses futuros' : paid ? <>Pagada · Cap. {formatCop(schedule.principal_due)} · Int. {formatCop(schedule.interest_due)}</> : <>Capital pendiente {formatCop(scheduleRemaining(schedule).capital)} · Interés pendiente {formatCop(scheduleRemaining(schedule).interest)}{scheduleRemaining(schedule).total.lt(scheduleTotal(schedule)) ? <><br />Programado originalmente {formatCop(scheduleTotal(schedule))} · Capital aplicado {formatCop(schedule.principal_paid ?? 0)}</> : null}</>}</span>
                       </span>
-                      <span className="row-amount">{schedule.closed_by_settlement ? 'Cerrada' : formatCop(scheduleTotal(schedule))}</span>
+                      <span className="row-amount">{schedule.closed_by_settlement ? 'Cerrada' : formatCop(paid ? scheduleTotal(schedule) : scheduleRemaining(schedule).total)}</span>
                     </li>
                   );
                 })}
@@ -3196,9 +3216,10 @@ export function LoansPanel({
                     <div>
                       <span className="history-name">{formatShortDate(payment.payment_date)} · {payment.kind === 'prepayment' ? 'Pago total' : 'Pago'}{payment.status === 'reversed' ? ' · Revertido' : ''}</span>
                       <span className="history-meta">Capital {formatCop(payment.capital_amount)} · Interés {formatCop(payment.interest_amount)}</span>
+                      {payment.note ? <span className="history-meta">Nota: {payment.note}</span> : null}
                     </div>
                     <span className="history-amount">{formatCop(payment.amount)}</span>
-                    {payment.status!=='reversed'?<UndoOperationButton operationId={payment.operation_id}/>:null}
+                    {payment.status!=='reversed'&&!historicalCut?<UndoOperationButton operationId={payment.operation_id}/>:null}
                   </li>
                 ))}
               </ol>
@@ -3225,7 +3246,7 @@ export function LoansPanel({
       <div className="loan-grid">
         {visibleLoans.map(({ row, info }, index) => {
           const nextRow = row.nextSchedule;
-          const cuota = row.settledByAccount ? null : nextRow ? scheduleTotal(nextRow) : row.loan.scheduled_payment ? new Decimal(row.loan.scheduled_payment) : null;
+          const cuota = row.settledByAccount ? null : nextRow ? scheduleRemaining(nextRow).total : row.loan.scheduled_payment ? new Decimal(row.loan.scheduled_payment) : null;
           const progress = row.settledByAccount ? 100 : row.totalInstallments ? Math.round((row.paidInstallments / row.totalInstallments) * 100) : row.loan.status === 'paid' ? 100 : 0;
           return (
             <article key={row.loan.id} className={`loan-card${row.loan.id === selectedLoanId ? ' is-selected' : ''}`} data-loan-row={row.loan.id} style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}>
@@ -3249,7 +3270,7 @@ export function LoansPanel({
               <ProgressBar value={progress} decorative />
               <div className="loan-card-foot">
                 <span>{info.detail}</span>
-                {row.loan.status === 'draft' ? <Button type="button" className="loan-card-action" onClick={() => openDisburse(row.loan)} disabled={pending}>Desembolsar</Button> : null}
+                {row.loan.status === 'draft' ? <Button type="button" className="loan-card-action" onClick={() => openDisburse(row.loan)} disabled={pending || historicalCut}>Desembolsar</Button> : null}
                 <button type="button" className="loan-card-open" aria-description={`${row.borrower} · ${row.loan.legacy_id ?? 'Préstamo'}`} onClick={(event) => selectLoan(row.loan.id, event.currentTarget)}>Ver detalle</button>
               </div>
             </article>
@@ -3272,7 +3293,7 @@ export function LoansPanel({
             {!borrowerMemberId ? <label>Deudor externo<input value={externalName} onChange={(event) => setExternalName(event.target.value)} disabled={pending} placeholder="Nombre completo" /></label> : null}
             <label>
               Principal
-              <input className="input-amount" value={principal} onChange={(event) => setPrincipal(event.target.value)} inputMode="decimal" disabled={pending} placeholder="1.000.000" />
+              <CopInput className="input-amount" value={principal} onChange={(event) => setPrincipal(event.target.value)} inputMode="decimal" disabled={pending} placeholder="1.000.000" />
             </label>
             <div className="form-pair">
               <label>
@@ -3346,7 +3367,7 @@ export function LoansPanel({
                 <div><dt>Cuotas totales</dt><dd>{selectedRow.totalInstallments || selectedRow.loan.term_months}</dd></div>
                 <div><dt>Cuotas pagadas</dt><dd>{selectedRow.paidInstallments}</dd></div>
                 <div><dt>Cuotas pendientes</dt><dd>{openSchedules.length}</dd></div>
-                <div><dt>Valor por cuota</dt><dd>{next ? formatCop(scheduleTotal(next)) : selectedRow.loan.scheduled_payment ? formatCop(selectedRow.loan.scheduled_payment) : '—'}</dd></div>
+                <div><dt>Próxima cuota pendiente</dt><dd>{next ? formatCop(scheduleRemaining(next).total) : '—'}</dd></div>
                 <div><dt>Saldo de capital</dt><dd>{formatCop(selectedRow.pendingPrincipal)}</dd></div>
               </dl>
               <small>El saldo es de capital: no incluye intereses por causar.</small>
@@ -3358,6 +3379,11 @@ export function LoansPanel({
                 {payTypeChips}
               </div>
             ) : null}
+
+            <label>Nota del pago (opcional)
+              <input aria-label="Nota del pago" value={paymentNote} onChange={event => setPaymentNote(event.target.value)} maxLength={500} disabled={pending || !!readPendingFinancialOperation(`loan:payment:${cycle.id}:${selectedLoanId}`) || !!readPendingFinancialOperation(`loan:prepayment:${cycle.id}:${selectedLoanId}`)} aria-describedby="pay-note-help" placeholder="Ej.: abono extraordinario al capital" />
+              <small id="pay-note-help" className="field-hint">Hasta 500 caracteres. Se conserva con el cobro y no se puede editar después de confirmar.</small>
+            </label>
 
             {payMode === 'total' ? (
               <div className="quote-box" role="status">
@@ -3379,7 +3405,7 @@ export function LoansPanel({
                   <label className="pay-amount">
                     <span className="sr-only">Pago</span>
                     <span className="pay-prefix" aria-hidden="true">$</span>
-                    <input className="input-amount" value={paymentAmount} onChange={(event) => { setPaymentAmount(event.target.value); setPrepaymentQuote(null); }} inputMode="decimal" disabled={pending} placeholder="0" />
+                    <CopInput aria-label="Pago" className="input-amount" value={paymentAmount} onChange={(event) => { setPaymentAmount(event.target.value); setPayMode('other'); setPrepaymentQuote(null); }} inputMode="decimal" disabled={pending} placeholder="0" />
                   </label>
                   {payTypeChips}
                 </div>
@@ -3391,10 +3417,11 @@ export function LoansPanel({
                   </label>
                 </div>
                 <div className="form-pair">
-                  <label>Capital<input value={capitalAmount} onChange={(event) => setCapitalAmount(event.target.value)} inputMode="decimal" disabled={pending} readOnly={automaticApplication} /></label>
-                  <label>Interés<input value={interestAmount} onChange={(event) => setInterestAmount(event.target.value)} inputMode="decimal" disabled={pending} readOnly={automaticApplication} /></label>
+                  <label>Capital<CopInput value={capitalAmount} onChange={(event) => { setCapitalAmount(event.target.value); setPayMode('other'); }} inputMode="decimal" disabled={pending} readOnly={automaticApplication} /></label>
+                  <label>Interés<CopInput value={interestAmount} onChange={(event) => { setInterestAmount(event.target.value); setPayMode('other'); }} inputMode="decimal" disabled={pending} readOnly={automaticApplication} /></label>
                 </div>
                 {automaticApplication ? <small className="field-hint">Primero intereses exigibles y después capital, desde la cuota más antigua. Un pago parcial mantiene abierta la cuota.</small> : null}
+                {payMode === 'other' && paymentSummary?.capital.gt(0) && paymentSummary.interest.isZero() ? <small className="field-hint">Abono al capital: no cubre una cuota de intereses.</small> : null}
                 <p className={paymentSummary && !paymentSummary.matches ? 'pay-summary is-warning' : 'pay-summary'} aria-live="polite">
                   {paymentSummary
                     ? paymentSummary.matches
@@ -3402,14 +3429,6 @@ export function LoansPanel({
                       : 'Capital más interés no suman el pago. Revisa el desglose.'
                     : 'Escribe el pago, el capital y el interés.'}
                 </p>
-                <div className="pay-section">
-                  <span className="pay-section-title" aria-hidden="true">Nota (opcional)</span>
-                  <label>
-                    <span className="sr-only">Nota del pago</span>
-                    <input value="" readOnly disabled placeholder="Ej.: pago de cuota…" aria-describedby="pay-note-help" />
-                  </label>
-                  <small id="pay-note-help" className="field-hint">No disponible en esta versión: el pago todavía no guarda notas.</small>
-                </div>
                 <div className="pay-cta-bar">
                   <Button type="submit" className="pay-cta" disabled={pending || !paymentSummary || !paymentSummary.matches || (receiptTo.location === 'bank' && !receiptTo.bankAccountId) || (automaticApplication && paymentPlanKey !== applicationKey)}>{pending ? 'Guardando...' : 'Registrar Pago'}</Button>
                 </div>
@@ -3766,7 +3785,7 @@ export function PollaPanel({
               </select>
             </label>
             <div className="form-pair">
-              <label><span>Aporte polla</span><input className="input-amount" value={pollaAmount} onChange={(event) => setPollaAmount(event.target.value)} inputMode="decimal" disabled={pending} placeholder="10.000" /></label>
+              <label><span>Aporte polla</span><CopInput className="input-amount" value={pollaAmount} onChange={(event) => setPollaAmount(event.target.value)} inputMode="decimal" disabled={pending} placeholder="10.000" /></label>
               <label><span>Fecha aporte</span><input type="date" value={pollaPaidDate} onChange={(event) => setPollaPaidDate(event.target.value)} disabled={pending} /></label>
             </div>
             <Button type="submit" disabled={pending || !activityId || !cycleMemberId}>{pending ? 'Guardando...' : 'Guardar aporte'}</Button>
@@ -3787,7 +3806,7 @@ export function PollaPanel({
               </select>
             </label>
             <div className="form-pair">
-              <label><span>Premio bruto</span><input className="input-amount" value={prizeGross} onChange={(event) => setPrizeGross(event.target.value)} inputMode="decimal" disabled={pending} /></label>
+              <label><span>Premio bruto</span><CopInput className="input-amount" value={prizeGross} onChange={(event) => setPrizeGross(event.target.value)} inputMode="decimal" disabled={pending} /></label>
               <label><span>Fecha premio</span><input type="date" value={prizeAwardedAt} onChange={(event) => setPrizeAwardedAt(event.target.value)} disabled={pending} /></label>
             </div>
             <small className="field-hint">Se descuentan $5.000 de comisión para el administrador y el neto se suma al capital del ganador. No sale dinero de la cuenta.</small>
@@ -3972,7 +3991,7 @@ function BankPanel({
 
   const dateField = <label>Fecha<input type="date" value={effectiveDate} onChange={(event) => setEffectiveDate(event.target.value)} disabled={pending} required /></label>;
   const referenceField = <label>Referencia<input value={reference} onChange={(event) => setReference(event.target.value)} disabled={pending} placeholder="Opcional" /></label>;
-  const amountField = (label = 'Monto') => <label>{label}<input className="input-amount" value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" disabled={pending} placeholder="0" required /></label>;
+  const amountField = (label = 'Monto') => <label>{label}<CopInput className="input-amount" value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" disabled={pending} placeholder="0" required /></label>;
 
   return (
     <section className="bank-page more-page" aria-labelledby="banco-titulo">
@@ -4135,8 +4154,8 @@ function BankPanel({
             {amountField('Interés bruto')}
             <small className="field-hint">Usa la fecha en que Pibank abonó el rendimiento, no la de hoy: de esa fecha depende quién participa en el reparto.</small>
             <div className="form-pair">
-              <label>Retención en la fuente<input value={interestWithholding} onChange={(event) => setInterestWithholding(event.target.value)} inputMode="decimal" disabled={pending} /></label>
-              <label>Comisión sobre intereses<input value={interestFee} onChange={(event) => setInterestFee(event.target.value)} inputMode="decimal" disabled={pending} /></label>
+              <label>Retención en la fuente<CopInput value={interestWithholding} onChange={(event) => setInterestWithholding(event.target.value)} inputMode="decimal" disabled={pending} /></label>
+              <label>Comisión sobre intereses<CopInput value={interestFee} onChange={(event) => setInterestFee(event.target.value)} inputMode="decimal" disabled={pending} /></label>
             </div>
             {dateField}
             {referenceField}
@@ -4198,14 +4217,14 @@ function BankPanel({
             {sheetError ? <InlineNotice tone="danger">{sheetError}</InlineNotice> : null}
             <label>Fecha del corte<input type="date" value={effectiveDate} onChange={(event) => setEffectiveDate(event.target.value)} disabled={pending} required /></label>
             <div className="value-row value-row-soft"><span>Según la app</span><strong>{formatCop(sheetBalance)}</strong></div>
-            <label>Saldo del extracto<input className="input-amount" value={externalBalance} onChange={(event) => setExternalBalance(event.target.value)} inputMode="decimal" disabled={pending} required /></label>
+            <label>Saldo del extracto<CopInput className="input-amount" value={externalBalance} onChange={(event) => setExternalBalance(event.target.value)} inputMode="decimal" disabled={pending} required /></label>
             {reconcileDiff ? (
               <div className={reconcileDiff.isZero() ? 'value-row value-row-ok' : 'value-row value-row-bad'} aria-live="polite">
                 <span>{reconcileDiff.isZero() ? 'Cuadra' : 'Diferencia'}</span><strong>{formatCop(reconcileDiff)}</strong>
               </div>
             ) : null}
             <div className="form-pair">
-              <label>Saldo inicial verificado<input value={openingBalance} onChange={(event) => setOpeningBalance(event.target.value)} inputMode="decimal" disabled={pending} placeholder="Según el primer extracto" required /></label>
+              <label>Saldo inicial verificado<CopInput value={openingBalance} onChange={(event) => setOpeningBalance(event.target.value)} inputMode="decimal" disabled={pending} placeholder="Según el primer extracto" required /></label>
               <label>Fecha del saldo inicial<input type="date" value={openingDate} onChange={(event) => setOpeningDate(event.target.value)} disabled={pending} required /></label>
             </div>
             {referenceField}
@@ -4503,7 +4522,7 @@ function AdminFundPanel({
             <p className="sheet-sub">Disponible {formatCop(withdrawPreview?.available ?? 0)} después de reservar el 12 % EA hasta el cierre.</p>
             {formError ? <InlineNotice tone="danger">{formError}</InlineNotice> : null}
             <LocationPicker value={withdrawFrom} onChange={setWithdrawFrom} bankAccounts={bankAccounts} disabled={pending} />
-            <label>Monto<input className="input-amount" value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" disabled={pending} required /></label>
+            <label>Monto<CopInput className="input-amount" value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" disabled={pending} required /></label>
             <label>Fecha<input type="date" value={effectiveDate} onChange={(event) => setEffectiveDate(event.target.value)} disabled={pending} required /></label>
             <label>Comprobante o detalle<input value={description} onChange={(event) => setDescription(event.target.value)} disabled={pending} placeholder="Número de transferencia" required /></label>
             <Button type="submit" disabled={pending || !amount || !description.trim() || !withdrawPreview || (withdrawFrom.location === 'bank' && !withdrawFrom.bankAccountId)}>{pending ? 'Guardando...' : 'Registrar retiro'}</Button>
@@ -4736,12 +4755,12 @@ function SettlementPanel({
               <>
                 <div className="form-pair">
                   <FinancialCutField value={cutDate} min={cycle.starts_on} max={cycle.closes_on} invalid={!!dateError} onChange={(value) => { invalidatePreview(); setCutDate(value); }} disabled={operationPending || completionPending} />
-                  <label>Otros descuentos<input value={otherDiscounts} onChange={(event) => { invalidatePreview(); setOtherDiscounts(event.target.value); }} inputMode="decimal" disabled={operationPending || completionPending} /></label>
+                  <label>Otros descuentos<CopInput value={otherDiscounts} onChange={(event) => { invalidatePreview(); setOtherDiscounts(event.target.value); }} inputMode="decimal" disabled={operationPending || completionPending} /></label>
                 </div>
                 {!automaticFees ? <>
                   <div className="form-pair">
-                    <label>Cuota de administración<input value={annualFee} onChange={event => { invalidatePreview(); setAnnualFee(event.target.value); }} inputMode="decimal" disabled={operationPending} /></label>
-                    <label>Multa por retiro<input value={penalty} onChange={event => { invalidatePreview(); setPenalty(event.target.value); }} inputMode="decimal" disabled={operationPending} /></label>
+                    <label>Cuota de administración<CopInput value={annualFee} onChange={event => { invalidatePreview(); setAnnualFee(event.target.value); }} inputMode="decimal" disabled={operationPending} /></label>
+                    <label>Multa por retiro<CopInput value={penalty} onChange={event => { invalidatePreview(); setPenalty(event.target.value); }} inputMode="decimal" disabled={operationPending} /></label>
                   </div>
                   <small className="field-hint">Este ciclo usa descuentos manuales. Registra los importes acordados; no se aplican cobros automáticos.</small>
                 </> : <small className="field-hint">El servidor calcula administración y multa según la política de este ciclo. Los importes descontados aparecen en el desglose.</small>}
@@ -5095,10 +5114,10 @@ function ProfitDistributionPanel({
                 <label>Nombre de las reglas<input value={policyVersion} onChange={(event) => { setPolicyVersion(event.target.value); setPreview(null); }} disabled={pending} /></label>
                 {!approved ? <label>Descripción<input value={policyDescription} onChange={(event) => setPolicyDescription(event.target.value)} disabled={pending} /></label> : null}
                 <div className="form-pair">
-                  <label>Costos<input value={costs} onChange={(event) => { setCosts(event.target.value); setPreview(null); }} inputMode="decimal" disabled={pending} /></label>
-                  <label>Reserva<input value={reserve} onChange={(event) => { setReserve(event.target.value); setPreview(null); }} inputMode="decimal" disabled={pending} /></label>
+                  <label>Costos<CopInput value={costs} onChange={(event) => { setCosts(event.target.value); setPreview(null); }} inputMode="decimal" disabled={pending} /></label>
+                  <label>Reserva<CopInput value={reserve} onChange={(event) => { setReserve(event.target.value); setPreview(null); }} inputMode="decimal" disabled={pending} /></label>
                 </div>
-                <label>Rendimiento ya prometido<input value={committedYield} onChange={(event) => { setCommittedYield(event.target.value); setPreview(null); }} inputMode="decimal" disabled={pending} /></label>
+                <label>Rendimiento ya prometido<CopInput value={committedYield} onChange={(event) => { setCommittedYield(event.target.value); setPreview(null); }} inputMode="decimal" disabled={pending} /></label>
                 <small className="field-hint">Costos: gastos de la natillera. Reserva: lo que se guarda para el próximo año. Rendimiento ya prometido: parte del fondo comprometida antes del reparto.</small>
                 {!approved ? <Button type="button" variant="quiet" disabled={pending || !policyVersion.trim() || !policyDescription.trim()} onClick={() => void run(async () => { await createLoanProfitDistributionPolicy({ cycleId: cycle.id, policyVersion, description: policyDescription }); await onSaved(); })}>Aprobar reglas</Button> : null}
               </div>

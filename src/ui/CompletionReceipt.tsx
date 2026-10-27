@@ -1,3 +1,4 @@
+import { CopInput } from './CopInput';
 import { useRef, useState } from 'react';
 import type { BankAccount } from '../lib/types';
 import type { SettlementPreview } from '../data/blockC';
@@ -38,7 +39,7 @@ export function CompletionReceipt({ preview, inputs, accounts, today, onSaved, o
     <p>Falta completar {formatCop(new Decimal(preview.net).abs(), 2)}. Registra únicamente dinero recibido y verificado; no será un aporte mensual ni otro cobro de préstamo.</p>
     {!open ? <button type="button" className="button button-quiet" onClick={() => setOpen(true)}>Registrar pago para completar la cuenta final</button> : <div className="sheet-form">
       <label>Dónde se recibió<select value={location} onChange={event => setLocation(event.target.value as 'bank' | 'cash')} disabled={busy}><option value="bank" disabled={!accounts.length}>Banco</option><option value="cash">Efectivo</option></select></label>
-      <label>Importe recibido<input inputMode="decimal" value={amount} onChange={event => setAmount(event.target.value)} disabled={busy} /></label>
+      <label>Importe recibido<CopInput inputMode="decimal" value={amount} onChange={event => setAmount(event.target.value)} disabled={busy} /></label>
       <label>Fecha real de la consignación<input type="date" max={inputs.cutDate < today ? inputs.cutDate : today} value={date} onChange={event => setDate(event.target.value)} disabled={busy} /></label>
       {location === 'bank' ? <label>Cuenta que recibió el dinero<select value={bank} onChange={event => setBank(event.target.value)} disabled={busy}>{accounts.map(account => <option key={account.id} value={account.id}>{account.display_name}</option>)}</select></label> : null}
       <label>Referencia de la consignación<input value={reference} onChange={event => setReference(event.target.value)} disabled={busy} /></label>

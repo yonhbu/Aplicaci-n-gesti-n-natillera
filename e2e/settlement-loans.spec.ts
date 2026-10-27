@@ -6,7 +6,7 @@ const api='http://127.0.0.1:55421';
 test.describe.configure({mode:'serial'});
 const faults=new WeakMap<Page,string[]>();
 test.beforeEach(async({page})=>{
- await page.clock.setFixedTime(new Date('2026-10-21T17:00:00Z'));
+ await page.clock.setFixedTime(new Date(fixture.today+'T17:00:00Z'));
  const errors:string[]=[];faults.set(page,errors);
  page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text())});
  page.on('response',r=>{if(r.status()>=400)errors.push(r.status()+' '+new URL(r.url()).pathname)});

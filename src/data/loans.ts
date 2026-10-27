@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import type { LoanContract, LoanPayment, LoanSchedule, LoanSettlementEffect } from '../lib/types';
+import type { LoanContract, LoanPayment, LoanPaymentApplication, LoanSchedule, LoanSettlementEffect } from '../lib/types';
 import { fetchAllPages } from './pagination';
 
 export async function listLoans(cycleId: string): Promise<LoanContract[]> {
@@ -37,17 +37,33 @@ export async function listLoanPayments(cycleId: string): Promise<LoanPayment[]> 
 }
 
 export async function listLoanSchedules(cycleId: string): Promise<LoanSchedule[]> {
-  return fetchAllPages(async (from, to) => {
+  const schedules = await fetchAllPages(async (from, to) => {
     const { data, error } = await supabase
       .from('loan_schedule_progress')
       .select('*')
       .eq('cycle_id', cycleId)
       .order('loan_id', { ascending: true })
       .order('installment_number', { ascending: true })
+      .order('id', { ascending: true })
       .range(from, to);
     if (error) throw new Error(error.message);
     return (data ?? []) as LoanSchedule[];
   });
+  // The progress view aggregates only currently posted receipts. Preserve raw
+  // applications so a historical cut can also include a later reversed receipt.
+  const applications = await fetchAllPages(async (from, to) => {
+    const { data, error } = await supabase.from('loan_payment_applications').select('*')
+      .eq('cycle_id', cycleId).order('id', { ascending: true }).range(from, to);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as LoanPaymentApplication[];
+  });
+  const bySchedule = new Map<string, LoanPaymentApplication[]>();
+  for (const application of applications) {
+    if (!application.schedule_id) continue;
+    const rows = bySchedule.get(application.schedule_id) ?? [];
+    rows.push(application); bySchedule.set(application.schedule_id, rows);
+  }
+  return schedules.map(schedule => ({ ...schedule, payment_applications: bySchedule.get(schedule.id) ?? [] }));
 }
 
 export async function createLoanContract(input: {
@@ -99,8 +115,9 @@ export async function recordLoanPayment(input: {
   interestAmount: string;
   kind: 'regular' | 'prepayment';
   bankAccountId?: string | null;
+  note?: string | null;
 }) {
-  const { data, error } = await supabase.rpc(input.bankAccountId === undefined ? 'record_loan_payment' : 'record_located_loan_payment', {
+  const { data, error } = await supabase.rpc(input.note !== undefined ? 'record_noted_loan_payment' : input.bankAccountId === undefined ? 'record_loan_payment' : 'record_located_loan_payment', {
     p_loan_id: input.loanId,
     p_idempotency_key: input.idempotencyKey,
     p_payment_date: input.paymentDate,
@@ -108,7 +125,8 @@ export async function recordLoanPayment(input: {
     p_capital_amount: input.capitalAmount,
     p_interest_amount: input.interestAmount,
     p_kind: input.kind,
-    ...(input.bankAccountId === undefined ? {} : { p_bank_account_id: input.bankAccountId, p_quote_hash: null })
+    ...(input.bankAccountId === undefined && input.note === undefined ? {} : { p_bank_account_id: input.bankAccountId ?? null, p_quote_hash: null }),
+    ...(input.note === undefined ? {} : { p_note: input.note })
   });
   if (error) throw new Error(error.message);
   return data as LoanPayment;
@@ -140,13 +158,13 @@ export async function quoteLoanPrepayment(loanId: string, quoteDate: string): Pr
   return data as LoanPrepaymentQuote;
 }
 
-export async function confirmLoanPrepayment(loanId: string, date: string, idempotencyKey: string, quoteHash: string, bankAccountId?: string | null) {
-  const { data, error } = await supabase.rpc(bankAccountId === undefined ? 'confirm_loan_prepayment' : 'record_located_loan_payment', {
+export async function confirmLoanPrepayment(loanId: string, date: string, idempotencyKey: string, quoteHash: string, bankAccountId?: string | null, note?: string | null) {
+  const { data, error } = await supabase.rpc(note !== undefined ? 'confirm_noted_loan_prepayment' : bankAccountId === undefined ? 'confirm_loan_prepayment' : 'record_located_loan_payment', {
     p_loan_id: loanId,
     p_idempotency_key: idempotencyKey,
     p_payment_date: date,
     p_quote_hash: quoteHash,
-    ...(bankAccountId === undefined ? {} : { p_bank_account_id: bankAccountId, p_amount: null, p_capital_amount: null, p_interest_amount: null, p_kind: 'prepayment' })
+    ...(note !== undefined ? { p_bank_account_id: bankAccountId ?? null, p_note: note } : bankAccountId === undefined ? {} : { p_bank_account_id: bankAccountId, p_amount: null, p_capital_amount: null, p_interest_amount: null, p_kind: 'prepayment' })
   });
   if (error) throw new Error(error.message);
   return data as LoanPayment;

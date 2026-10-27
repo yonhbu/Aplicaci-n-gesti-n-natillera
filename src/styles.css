@@ -2173,7 +2173,7 @@ input:focus, select:focus { border-color: var(--green-500); box-shadow: 0 0 0 3p
 .tag { background: #eef0f6; border-radius: 6px; color: #4a5a6e; font-size: 0.7rem; font-weight: 700; justify-self: start; padding: 2px 7px; }
 
 .movements-panel { display: grid; gap: 14px; }
-.flow-totals { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.flow-totals { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); }
 .flow-totals div { background: #f5f8f6; border-radius: 16px; display: grid; gap: 2px; padding: 12px 14px; }
 .flow-totals span { color: var(--ink-muted); font-size: 0.8rem; }
 .flow-totals strong { font-size: 1.15rem; font-variant-numeric: tabular-nums; font-weight: 800; }
