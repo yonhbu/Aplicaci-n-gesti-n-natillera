@@ -42,7 +42,7 @@ jobs:
       - run: npm run test:rls
       - run: npx playwright install --with-deps chrome
       - name: Regresión de reflow y enfoque antes de la colección completa
-        run: npm run test:e2e -- --grep 'reduced motion, text at 200 percent|historical projection uncertainty'
+        run: npm run test:e2e -- --grep 'responsive styles|reduced motion, text at 200 percent|historical projection uncertainty'
       - run: npm run test:e2e
       - run: node scripts/check-audit-artifacts.mjs
       - if: always()
