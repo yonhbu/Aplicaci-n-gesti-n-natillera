@@ -23,3 +23,12 @@ it('propaga rechazos SQL sin simular confirmación', async () => {
   rpc.mockResolvedValue({ data: null, error: { message: 'No tiene permiso sobre este prestamo.' } });
   await expect(recordLoanPayment({ ...receipt, note: null })).rejects.toThrow('No tiene permiso');
 });
+it.each(['payment', 'prepayment'])('explica la migración pendiente en %s sin fallback ni pérdida de nota', async kind => {
+  rpc.mockResolvedValue({ data: null, error: { code: 'PGRST202', message: 'Function not found in schema cache' } });
+  const result = kind === 'payment'
+    ? recordLoanPayment({ ...receipt, note: 'Nota que no se debe perder' })
+    : confirmLoanPrepayment('loan', '2026-10-26', 'same-key', 'quote-hash', null, 'Nota que no se debe perder');
+  await expect(result).rejects.toThrow('Requiere la migración 20261108000100');
+  expect(rpc).toHaveBeenCalledTimes(1);
+  expect(rpc.mock.calls[0][1].p_note).toBe('Nota que no se debe perder');
+});

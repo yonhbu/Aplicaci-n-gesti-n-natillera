@@ -249,3 +249,14 @@
 
 .sheet:has(.member-insight) .sheet-head { flex-wrap:wrap; }
 .sheet:has(.member-insight) .sheet-head h2 { flex:1 1 12rem; }
+
+/* Reflow remains bounded when system fonts and text scaling change in CI. */
+.sheet:has(.member-insight) { min-width:0; min-height:0; scroll-padding-block:16px; }
+.sheet:has(.member-insight) .sheet-head h2 { overflow-wrap:anywhere; }
+.member-insight .insight-grid { grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr)); }
+.insight-value strong { overflow-wrap:anywhere; min-width:0; }
+.insight-months { grid-template-columns:repeat(auto-fit,minmax(min(100%,7rem),1fr)); }
+.member-insight :is(button,input) { scroll-margin-block:16px; }
+.member-filters button { transition:box-shadow 160ms ease; }
+.member-filters button:hover:not(:disabled) { background:var(--ux-green-soft); color:var(--ux-green-ink); }
+@media(max-width:539px) { .member-insight .insight-grid { grid-template-columns:minmax(0,1fr); } }

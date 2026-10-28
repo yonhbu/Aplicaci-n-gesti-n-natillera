@@ -1131,6 +1131,23 @@ function Sheet({ title, onClose, children, closeDisabled = false, variant }: { t
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     panelRef.current?.focus();
+    function keepFocusVisible() {
+      const panel = panelRef.current, active = document.activeElement;
+      if (!panel || !(active instanceof HTMLElement) || active === panel || !panel.contains(active)) return;
+      const viewport = panel.getBoundingClientRect(), control = active.getBoundingClientRect();
+      if (viewport.height <= 0) return;
+      if (control.top < viewport.top + 16) panel.scrollTop += control.top - viewport.top - 16;
+      else if (control.bottom > viewport.bottom - 16) panel.scrollTop += control.bottom - viewport.bottom + 16;
+    }
+    // Content can grow after an asynchronous preview or a text-size change.
+    // Scroll only this dialog; never move focus or scroll the page underneath.
+    const panel = panelRef.current;
+    panel?.addEventListener('focusin', keepFocusVisible);
+    const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(keepFocusVisible);
+    if (panel) {
+      resize?.observe(panel);
+      Array.from(panel.children).forEach(child => resize?.observe(child));
+    }
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         onCloseRef.current();
@@ -1147,6 +1164,8 @@ function Sheet({ title, onClose, children, closeDisabled = false, variant }: { t
     document.body.classList.add('sheet-open');
     return () => {
       document.removeEventListener('keydown', onKeyDown);
+      panel?.removeEventListener('focusin', keepFocusVisible);
+      resize?.disconnect();
       document.body.classList.remove('sheet-open');
       previous?.focus();
     };

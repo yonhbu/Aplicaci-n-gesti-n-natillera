@@ -151,9 +151,11 @@ test('OTP, socio, aporte, prestamo, polla, recarga y usuario sin membresia', asy
   await expect(paySheet.getByRole('button', { name: 'Confirmar pago total' })).toBeEnabled();
   await paySheet.getByRole('button', { name: 'Confirmar pago total' }).click();
   await expect(paySheet).toHaveCount(0);
+  await expect(loanDetail.locator('[data-loan-payment-row]')).toHaveCount(2);
+  await loanDetail.getByRole('button', { name: 'Cerrar detalle', exact: true }).click();
+  await expect(loanDetail).toHaveCount(0);
   await loansPanel.getByRole('button', { name: /^Todos/ }).click();
   await expect(loansPanel.locator('[data-loan-row]').filter({ hasText: memberName })).toContainText('Pagado');
-  await expect(loanDetail.locator('[data-loan-payment-row]')).toHaveCount(2);
 
   await goPolla(page);
   const pollaPanel = page.locator('section.polla-page');
