@@ -1,6 +1,7 @@
 import { startAuditTrace, finishAuditTrace } from './audit-safe-trace';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { expect, test, type Page } from './test-fixtures';
+import { renderedLayout, responsiveViewport } from './responsive-layout';
 const base = 'docs/ux/evidence/ux14';
 const evidenceBase = process.env.UX14_EVIDENCE_DIR || base;
 const fixture = JSON.parse(readFileSync('incoming/ux13-2026-10-20/fixture.json', 'utf8'));
@@ -59,7 +60,13 @@ async function composition(page: Page) {
           range.setStart(node, match.index!); range.setEnd(node, match.index! + match[0].length);
           const rects = [...range.getClientRects()];
           if (new Set(rects.map(rect => Math.round(rect.top))).size > 1) issues.push('Palabra partida: ' + match[0]);
-          if (rects.some(rect => rect.left < box.left - 1 || rect.right > box.right + 1)) issues.push('Texto fuera: ' + match[0] + ' ' + JSON.stringify({ viewport: innerWidth, width: box.width, left: box.left, font: getComputedStyle(element).font, word: rects.map(rect => ({left:rect.left,right:rect.right,width:rect.width})) }));
+          if (rects.some(rect => rect.left < box.left - 1 || rect.right > box.right + 1)) {
+            const style = getComputedStyle(element);
+            issues.push('Texto fuera: ' + match[0] + ' ' + JSON.stringify({ viewport: innerWidth, width: box.width, left: box.left,
+              fontFamily: style.fontFamily, fontSize: style.fontSize, fontWeight: style.fontWeight,
+              fonts: document.fonts.status, heroPadding: element.closest('.hero-band') ? getComputedStyle(element.closest('.hero-band')!).paddingInline : null,
+              word: rects.map(rect => ({left:rect.left,right:rect.right,width:rect.width})) }));
+          }
           for(let ancestor=element.parentElement; ancestor; ancestor=ancestor.parentElement) {
             const style=getComputedStyle(ancestor);
             const boundary=ancestor.getBoundingClientRect();
@@ -175,13 +182,15 @@ for (const width of [320, 375, 390, 1440]) test('directory, back, focus, deep li
 test('reduced motion, text at 200 percent, landscape and touch dates', async ({browser}) => {
   test.skip(before);
   const context=await browser.newContext({viewport:{width:390,height:844},hasTouch:true,reducedMotion:'reduce',locale:'es-CO'});
+  try {
   const page=await context.newPage(); await login(page);
   await page.getByLabel('Fecha de corte',{exact:true}).tap(); await page.keyboard.press('Escape');
   await page.getByLabel('Fecha de corte',{exact:true}).fill('2026-09-20');
   await page.reload(); await expect(page.getByLabel('Fecha de corte',{exact:true})).toHaveValue('2026-09-20');
   await page.getByLabel('Fecha de corte',{exact:true}).fill('2026-10-20');
-  await page.setViewportSize({width:375,height:900});
+  await responsiveViewport(page,{width:375,height:900});
   await page.evaluate(()=>document.documentElement.style.fontSize='200%');
+  await renderedLayout(page);
   for(const route of ['home','members','more','more/admin','more/bank','more/profit','more/settlements']) {
     await page.goto('/#/'+route);
     await expect(page.locator('main h2').first()).toBeVisible();
@@ -205,7 +214,7 @@ test('reduced motion, text at 200 percent, landscape and touch dates', async ({b
   expect(await page.evaluate(()=>matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
   expect(await page.locator('.hero-band').evaluate(el=>parseFloat(getComputedStyle(el).animationDuration))).toBeLessThanOrEqual(.001);
   for(const width of [320,390]) {
-    await page.setViewportSize({width,height:900});
+    await responsiveViewport(page,{width,height:900});
     for(const route of ['more/admin','more/bank','members']) {
       await page.goto('/#/'+route); await expect(page.locator('main h2').first()).toBeVisible();
       if(route==='more/admin')await expect(page.getByText('Disponible para retirar',{exact:true})).toBeVisible();
@@ -221,9 +230,9 @@ test('reduced motion, text at 200 percent, landscape and touch dates', async ({b
     }
   }
   await page.evaluate(()=>document.documentElement.style.fontSize='');
-  await page.setViewportSize({width:844,height:390}); await page.goto('/#/more/admin');
+  await responsiveViewport(page,{width:844,height:390}); await page.goto('/#/more/admin');
   await expect(page.getByText('Disponible para retirar',{exact:true})).toBeVisible();
   expect((await overflow(page)).global).toBe(false);expect(await composition(page)).toEqual([]);
   await page.screenshot({path:evidenceBase+'/after/accessibility/admin-landscape.png',fullPage:true,animations:'disabled'});
-  await context.close();
+  } finally { await context.close(); }
 });
