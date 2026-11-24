@@ -2,6 +2,14 @@ export const PAYMENT_NOTES_SCHEMA_REQUIRED = 'La base de datos no expone las RPC
 
 export function userSafeError(error: unknown): string {
   if (error instanceof Error) {
+    if ([
+      'El ganador no tiene pagada completa la polla de esta actividad ($10.000).',
+      'El ganador no tiene derecho registrado en esta actividad.',
+      'Esta polla ya tiene premio asignado.',
+      'El socio ya se retiro: solo conserva las pollas que pago antes de su retiro.',
+      'La actividad no esta abierta para aportes.',
+      'El ganador ya liquido su ahorro: el premio se entrega como pago, no se acredita al capital.'
+    ].includes(error.message)) return error.message;
     if (error.message === PAYMENT_NOTES_SCHEMA_REQUIRED) return PAYMENT_NOTES_SCHEMA_REQUIRED;
     if (/^(El retiro supera el dinero personal documentado|La clave del movimiento personal|Fecha o ciclo del movimiento personal|Indique direccion, referencia|La referencia personal ya fue registrada)/.test(error.message)) return error.message;
     if (error.message === 'El destino del cobro no coincide con el intento original.') return 'El cobro pendiente corresponde a otra cuenta o a efectivo. Resuelve ese intento antes de cambiar su destino.';
