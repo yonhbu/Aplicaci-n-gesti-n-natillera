@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { PAYMENT_NOTES_SCHEMA_REQUIRED, userSafeError } from './userMessages';
 
+it('explica el rechazo de ganador por aporte incompleto sin simular éxito',()=>{
+  expect(userSafeError(new Error('El ganador no tiene pagada completa la polla de esta actividad ($10.000).'))).toContain('no tiene pagada completa');
+});
+it('no publica detalles internos aunque mencionen polla',()=>{
+  expect(userSafeError(new Error('polla: TEST_ONLY_INTERNAL_SQL_DETAIL'))).not.toContain('INTERNAL_SQL');
+});
+
 describe('known financial validation messages', () => {
   it('explains the polla quota without exposing arbitrary backend text', () => {
     expect(userSafeError(new Error('El aporte de polla es de $10.000 por actividad; este socio ya tiene 0.00.')))

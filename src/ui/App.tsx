@@ -579,6 +579,7 @@ export function App() {
               activities={pollaActivities}
               contributions={pollaContributions}
               prizes={pollaPrizes}
+              settlements={memberSettlements}
               ledgerEntries={ledgerEntries}
               bankAccounts={bankAccounts}
               onSaved={async () => {
@@ -3477,6 +3478,7 @@ export function PollaPanel({
   contributions,
   prizes,
   ledgerEntries,
+  settlements = [],
   bankAccounts = [],
   onSaved,
   onError
@@ -3487,12 +3489,14 @@ export function PollaPanel({
   activities: PollaActivity[];
   contributions: PollaContribution[];
   prizes: PollaPrize[];
+  settlements?: MemberSettlement[];
   ledgerEntries: LedgerEntry[];
   onSaved: () => Promise<void>;
   onError: (error: unknown) => void;
 }) {
   const currentMonth = civilToday().month;
-  const visibleActivities=activities.filter(item=>!item.cancelled_at);
+  const [includeCancelled,setIncludeCancelled]=useState(false);
+  const visibleActivities=activities.filter(item=>includeCancelled||!item.cancelled_at);
   const activityMonths = Array.from(new Set(visibleActivities.map((activity) => activity.period_month))).sort((left, right) => left - right);
   const [selectedMonth, setSelectedMonth] = useState(() =>
     activityMonths.length === 0 || activityMonths.includes(currentMonth) ? currentMonth : activityMonths[activityMonths.length - 1]
@@ -3535,6 +3539,11 @@ export function PollaPanel({
   const contributionMembers = cycle.settlement_rules_version === 'fin03-2026'
     ? cycleMembers.filter((item) => item.economic_mode !== 'fixed_yield')
     : cycleMembers;
+  const winnerMembers = cycleMembers.filter(item => (paidByMember.get(item.id) ?? new Decimal(0)).gte(POLLA_QUOTA));
+  const activityOpen = activity?.status === 'open' && !activity.cancelled_at;
+  function afterSettlement(memberId: string) {
+    return cycle.settlement_rules_version === 'fin03-2026' && settlements.some(item => item.cycle_member_id === memberId && item.status !== 'reversed' && item.cut_date < pollaPaidDate);
+  }
   const paidCount = roster.filter((item) => (paidByMember.get(item.id) ?? new Decimal(0)).gte(POLLA_QUOTA)).length;
   const pct = roster.length ? Math.round((paidCount / roster.length) * 100) : 0;
   const pollaPool = new Decimal(0).minus(ledgerEntries.filter((entry) => entry.account === 'polla_pool').reduce((sum, entry) => sum.plus(entry.amount), new Decimal(0)));
@@ -3563,9 +3572,9 @@ export function PollaPanel({
     setPending(true);
     setFormError('');
     try {
-      await createPollaActivity({ cycleId: cycle.id, year: cycle.year, month: activityMonth, name: activityName });
+      const created = await createPollaActivity({ cycleId: cycle.id, year: cycle.year, month: activityMonth, name: activityName });
       setSelectedMonth(activityMonth);
-      setSelectedActivityId('');
+      setSelectedActivityId(created.id);
       setActivityName('');
       setSheet(null);
       await onSaved();
@@ -3681,6 +3690,13 @@ export function PollaPanel({
             <button key={month} type="button" className="month-chip" aria-pressed={month === selectedMonth} onClick={() => { setSelectedMonth(month); setSelectedActivityId(''); }}>{months[month - 1]}</button>
           ))}
         </div>
+        <button type="button" className="hero-button" aria-pressed={includeCancelled} onClick={() => {
+          const next = !includeCancelled;
+          setIncludeCancelled(next);
+          const available = activities.filter(item => next || !item.cancelled_at);
+          if (!available.some(item => item.period_month === selectedMonth) && available.length) setSelectedMonth(available[0].period_month);
+          setSelectedActivityId('');
+        }}>{includeCancelled ? 'Ocultar actividades canceladas' : 'Ver actividades canceladas'}</button>
         {monthActivities.length ? (
           <div className="segmented segmented-dark" role="group" aria-label="Polla del mes">
             {monthActivities.map((item) => (
@@ -3701,12 +3717,13 @@ export function PollaPanel({
 
       {activity ? (
         <div className="polla-block">
+          {activity.cancelled_at ? <InlineNotice tone="neutral">Cancelada. Esta actividad se conserva para consulta; no admite nuevos aportes ni premios.</InlineNotice> : null}
           <div className="section-head">
             <h3>{hasCollectiveReceipts?'Recaudo de la polla':'Participantes'}</h3>
             <div className="section-head-actions">
-              <button type="button" className="link-button" onClick={() => openContribution()}>Registrar aporte</button>
-              <button type="button" className="link-button" onClick={openPrize}>Asignar ganador</button>
-              <UndoPollaButton target={{kind:'activity',id:activity.id,label:pollaDisplayName(activity.name,activity.period_month)}}/>
+              <button type="button" className="link-button" onClick={() => openContribution()} disabled={pending || !activityOpen}>Registrar aporte</button>
+              <button type="button" className="link-button" onClick={openPrize} disabled={pending || !activityOpen}>Asignar ganador</button>
+              {!activity.cancelled_at ? <UndoPollaButton target={{kind:'activity',id:activity.id,label:pollaDisplayName(activity.name,activity.period_month)}}/> : null}
             </div>
           </div>
           {!hasCollectiveReceipts&&roster.length === 0 ? (
@@ -3719,7 +3736,7 @@ export function PollaPanel({
               const name = item.member?.display_name ?? 'Socio';
               const retired = item.savings_status !== 'active';
               return (
-                <button key={item.id} type="button" className={`person-chip${complete ? ' is-paid' : paid ? ' is-partial' : ''}`} aria-pressed={complete} onClick={complete ? undefined : () => openContribution(item.id)}>
+                <button key={item.id} type="button" className={`person-chip${complete ? ' is-paid' : paid ? ' is-partial' : ''}`} aria-pressed={complete} disabled={!activityOpen} onClick={complete ? undefined : () => openContribution(item.id)}>
                   <span className="person-mark" aria-hidden="true">{complete ? '✓' : initials(name)}</span>
                   <span className="person-name">{name}{retired ? ' · retirado' : ''}</span>
                   {paid ? <span className="person-amount">{complete ? formatCop(paid) : `${formatCop(paid)} de ${formatCop(POLLA_QUOTA)}`}</span> : null}
@@ -3800,14 +3817,14 @@ export function PollaPanel({
               Participante
               <select value={cycleMemberId} onChange={(event) => setCycleMemberId(event.target.value)} disabled={pending} required>
                 <option value="">Seleccionar</option>
-                {contributionMembers.map((item) => <option key={item.id} value={item.id}>{item.member?.display_name}</option>)}
+                {contributionMembers.map((item) => <option key={item.id} value={item.id} disabled={afterSettlement(item.id)}>{item.member?.display_name}{afterSettlement(item.id) ? ' · liquidado antes de esta fecha' : ''}</option>)}
               </select>
             </label>
             <div className="form-pair">
               <label><span>Aporte polla</span><CopInput className="input-amount" value={pollaAmount} onChange={(event) => setPollaAmount(event.target.value)} inputMode="decimal" disabled={pending} placeholder="10.000" /></label>
               <label><span>Fecha aporte</span><input type="date" value={pollaPaidDate} onChange={(event) => setPollaPaidDate(event.target.value)} disabled={pending} /></label>
             </div>
-            <Button type="submit" disabled={pending || !activityId || !cycleMemberId}>{pending ? 'Guardando...' : 'Guardar aporte'}</Button>
+            <Button type="submit" disabled={pending || !activityId || !cycleMemberId || afterSettlement(cycleMemberId)}>{pending ? 'Guardando...' : 'Guardar aporte'}</Button>
           </form>
         </Sheet>
       ) : null}
@@ -3821,14 +3838,14 @@ export function PollaPanel({
               Ganador
               <select value={winnerId} onChange={(event) => setWinnerId(event.target.value)} disabled={pending} required>
                 <option value="">Seleccionar</option>
-                {cycleMembers.map((item) => <option key={item.id} value={item.id}>{item.member?.display_name}</option>)}
+                {winnerMembers.map((item) => <option key={item.id} value={item.id}>{item.member?.display_name}</option>)}
               </select>
             </label>
             <div className="form-pair">
               <label><span>Premio bruto</span><CopInput className="input-amount" value={prizeGross} onChange={(event) => setPrizeGross(event.target.value)} inputMode="decimal" disabled={pending} /></label>
               <label><span>Fecha premio</span><input type="date" value={prizeAwardedAt} onChange={(event) => setPrizeAwardedAt(event.target.value)} disabled={pending} /></label>
             </div>
-            <small className="field-hint">Se descuentan $5.000 de comisión para el administrador y el neto se suma al capital del ganador. No sale dinero de la cuenta.</small>
+            <small className="field-hint">Solo se incluyen aportes completos de esta actividad, aunque el socio se haya retirado después. Se descuentan $5.000 de comisión. Sin liquidación, el neto se acredita al capital sin salida de caja; con liquidación, queda pendiente para entrega separada.</small>
             <Button type="submit" disabled={pending || !activityId || !winnerId}>{pending ? 'Guardando...' : 'Asignar premio'}</Button>
           </form>
         </Sheet>

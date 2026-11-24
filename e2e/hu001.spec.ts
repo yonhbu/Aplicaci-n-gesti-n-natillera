@@ -15,15 +15,19 @@ test.beforeAll(async () => {
   const admin = createClient(supabaseUrl, supabaseSecretKey as string, {
     auth: { persistSession: false, autoRefreshToken: false }
   });
-  const existing = await admin.auth.admin.listUsers();
-  if (existing.error) {
-    throw new Error(existing.error.message);
+  async function outsiderExists() {
+    // Polla prepares isolated identities; the outsider can be beyond page one.
+    for (let page = 1; ; page += 1) {
+      const existing = await admin.auth.admin.listUsers({ page, perPage: 50 });
+      if (existing.error) throw new Error(existing.error.message);
+      if (existing.data.users.some((user) => user.email?.toLowerCase() === outsiderEmail)) return true;
+      if (existing.data.users.length < 50) return false;
+    }
   }
-  if (!existing.data.users.some((user) => user.email?.toLowerCase() === outsiderEmail)) {
+  if (!await outsiderExists()) {
     const created = await admin.auth.admin.createUser({ email: outsiderEmail, email_confirm: true });
     if (created.error) {
-      const retry = await admin.auth.admin.listUsers();
-      if (retry.error || !retry.data.users.some((user) => user.email?.toLowerCase() === outsiderEmail)) {
+      if (!await outsiderExists()) {
         throw new Error(created.error.message);
       }
     }
