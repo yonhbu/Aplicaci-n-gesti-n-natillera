@@ -64,10 +64,11 @@ test('QA007: withdrawal form exposes protected reserve and requires a real sourc
   const preview=await rest(page,'rpc/preview_admin_withdrawal',{p_cycle_id:cycle,p_effective_date:'2026-10-16'});expect(preview.status).toBe(200);expect(preview.data.available).toBeLessThanOrEqual(preview.data.admin_balance);expect(preview.data.ea_reserve).toBeGreaterThanOrEqual(0);
   await expect(dialog.getByText('Efectivo',{exact:true})).toBeVisible();await dialog.getByRole('button',{name:'Cancelar',exact:true}).click();
 });
-test('QA004: browser exports 44 complete collections and cannot invoke privileged restore',async({page},info)=>{
+test('QA004: browser exports 45 complete collections including historical rights and cannot invoke privileged restore',async({page},info)=>{
   await more(page,'Respaldos');await expect(page.getByText(/todos los ciclos de esta natillera/)).toBeVisible();const downloadPromise=page.waitForEvent('download');await page.getByRole('button',{name:'Descargar respaldo',exact:true}).click();const download=await downloadPromise;
   const file=info.outputPath('workspace-v3.json');await download.saveAs(file);const {readFile}=await import('node:fs/promises');const backup=JSON.parse(await readFile(file,'utf8'));
-  expect(backup.format).toBe('natillera-manager.workspace.v3');expect(Object.keys(backup.tables)).toHaveLength(44);
+  expect(backup.format).toBe('natillera-manager.workspace.v3');expect(Object.keys(backup.tables)).toHaveLength(45);
+  expect(Array.isArray(backup.tables.polla_historical_rights)).toBe(true);
   for(const [name,rows] of Object.entries(backup.tables))expect((rows as unknown[]).length).toBe(backup.counts[name]);
   expect(backup.tables.loan_payment_applications.length).toBeGreaterThan(0);expect(backup.tables.bank_yield_rights.length).toBe(2);expect(backup).not.toHaveProperty('auth');
   const denied=await rest(page,'rpc/restore_natillera_workspace',{p_backup:backup});expect([401,403,404]).toContain(denied.status);

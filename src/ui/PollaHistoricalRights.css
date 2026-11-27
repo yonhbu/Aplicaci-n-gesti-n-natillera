@@ -1,0 +1,9 @@
+.polla-history-panel { min-width: 0; }
+.polla-history-panel fieldset { min-width: 0; margin-block: 12px; padding: 12px; border: 1px solid #d8e2df; border-radius: 12px; }
+.polla-history-panel label { display: grid; gap: 6px; }
+.polla-history-panel label:has(input[type="checkbox"]) { display: flex; align-items: flex-start; gap: 10px; }
+.polla-history-panel input[type="checkbox"] { appearance: auto; width: 20px; height: 20px; min-width: 20px; min-height: 20px; max-width: 20px; padding: 0; margin: 0; flex-shrink: 0; box-shadow: none; }
+.polla-history-panel input:not([type="checkbox"]), .polla-history-panel select { width: 100%; min-width: 0; }
+.polla-history-panel .list-card { padding: 10px; margin-block: 8px; }
+.polla-history-panel summary { cursor: pointer; padding-block: 8px; }
+.polla-history-panel td, .polla-history-panel th { padding: 8px; text-align: left; }

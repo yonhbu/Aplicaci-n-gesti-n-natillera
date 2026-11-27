@@ -3,6 +3,7 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {Cycle,FinancialOperation,LoanContract,LoanSchedule,PollaPrize} from '../lib/types';
 const mocks=vi.hoisted(()=>({reverse:vi.fn(),prize:vi.fn(),cancel:vi.fn()}));
 vi.mock('../lib/supabase',()=>({supabase:{}}));
+vi.mock('./PollaHistoricalRights',()=>({PollaHistoricalRights:()=>null}));
 vi.mock('../data/finance',async original=>({...await original<object>(),reverseFinancialOperation:mocks.reverse}));
 vi.mock('../data/polla',async original=>({...await original<object>(),reversePollaPrize:mocks.prize,cancelPollaActivity:mocks.cancel}));
 vi.mock('../data/blockC',async original=>({...await original<object>(),getServerCivilToday:vi.fn().mockResolvedValue('2026-10-16')}));

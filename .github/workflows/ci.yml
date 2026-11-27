@@ -40,6 +40,10 @@ jobs:
       - run: npm run test:infra:start
       - run: npm run test:infra:reset
       - run: npm run test:rls
+      - name: Derechos históricos y matriz contable Polla TEST
+        run: |
+          node scripts/test-polla-history.mjs
+          node scripts/test-polla-history-matrix.mjs
       - run: npx playwright install --with-deps chrome
       - name: Regresión de reflow y enfoque antes de la colección completa
         run: npm run test:e2e -- --grep 'responsive styles|reduced motion, text at 200 percent|historical projection uncertainty'
