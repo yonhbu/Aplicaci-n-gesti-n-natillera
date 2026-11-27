@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap;
-select plan(8);
+select plan(9);
 insert into auth.users(id,aud,role,email,encrypted_password,email_confirmed_at,created_at,updated_at) values
 ('f0040000-0000-4000-8000-000000000001','authenticated','authenticated','fin-qa004@example.test','',now(),now(),now());
 insert into public.workspaces(id,name) values('f0040000-0000-4000-8000-000000000002','QA004 two cycles export');
@@ -13,7 +13,8 @@ insert into public.members(id,workspace_id,display_name) values
 ('f0040000-0000-4000-8000-000000000006','f0040000-0000-4000-8000-000000000002','QA member outside current UI');
 insert into public.cycle_members(id,workspace_id,cycle_id,member_id,monthly_quota) values
 ('f0040000-0000-4000-8000-000000000007','f0040000-0000-4000-8000-000000000002','f0040000-0000-4000-8000-000000000004','f0040000-0000-4000-8000-000000000005',100000);
-select is(array_length(public.natillera_backup_tables(),1),44,'recovery inventory includes reconciliation and statement comparisons');
+select is(array_length(public.natillera_backup_tables(),1),45,'recovery inventory includes reconciliation, statement comparisons and historical rights');
+select ok('polla_historical_rights'=any(public.natillera_backup_tables()),'historical rights are explicitly included in recovery inventory');
 select is(has_function_privilege('authenticated','public.restore_natillera_workspace(jsonb)','execute'),false,'browser role cannot execute privileged restore');
 set local role authenticated;
 set local request.jwt.claim.sub='f0040000-0000-4000-8000-000000000001';

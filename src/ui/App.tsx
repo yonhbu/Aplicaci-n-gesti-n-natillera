@@ -1,4 +1,5 @@
 import { CopInput } from './CopInput';
+import {PollaHistoricalRights,type HistoricalRight} from './PollaHistoricalRights';
 import { createContext, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Session } from '@supabase/supabase-js';
@@ -774,7 +775,7 @@ function TopBar({ email, cycle, onLogout }: { email: string; cycle?: Cycle | nul
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" focusable="false"><path d="M5 19c0-8 4-13 14-14 0 9-4 14-12 14" /><path d="M5 19c3-5 6-8 10-10" /></svg>
         </span>
         <span className="topbar-brand-text">
-          <strong>{cycle ? cycle.name : 'Natillera Manager'}</strong>
+          <strong>{cycle ? cycle.name : 'Natillera Manager'}</strong><span>Versión 10</span>
           {cycle ? <span>Ciclo {formatCycleRange(cycle)}</span> : null}
         </span>
       </div>
@@ -1001,7 +1002,7 @@ function LoginPanel({ onAuthenticated }: { onAuthenticated: () => Promise<void> 
     <main className="login">
       <Panel className="login-panel">
         <p className="eyebrow">Acceso privado</p>
-        <h1>Natillera Manager</h1>
+        <h1>Natillera Manager</h1><p>Versión 10</p>
         <form onSubmit={submit}>
           <Field label="Correo autorizado">
             <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required disabled={pending || sent} />
@@ -3539,7 +3540,8 @@ export function PollaPanel({
   const contributionMembers = cycle.settlement_rules_version === 'fin03-2026'
     ? cycleMembers.filter((item) => item.economic_mode !== 'fixed_yield')
     : cycleMembers;
-  const winnerMembers = cycleMembers.filter(item => (paidByMember.get(item.id) ?? new Decimal(0)).gte(POLLA_QUOTA));
+  const [historicalRights,setHistoricalRights]=useState<HistoricalRight[]>([]);
+  const winnerMembers = cycleMembers.filter(item => (paidByMember.get(item.id) ?? new Decimal(0)).plus(historicalRights.filter(r=>r.activity_id===activity?.id&&r.cycle_member_id===item.id).reduce((sum,r)=>sum.plus(r.amount),new Decimal(0))).gte(POLLA_QUOTA));
   const activityOpen = activity?.status === 'open' && !activity.cancelled_at;
   function afterSettlement(memberId: string) {
     return cycle.settlement_rules_version === 'fin03-2026' && settlements.some(item => item.cycle_member_id === memberId && item.status !== 'reversed' && item.cut_date < pollaPaidDate);
@@ -3717,6 +3719,7 @@ export function PollaPanel({
 
       {activity ? (
         <div className="polla-block">
+          {activityContributions.some(c=>c.legacy_collective)&&<PollaHistoricalRights activity={activity} members={cycleMembers} contributions={contributions} onRights={setHistoricalRights} onSaved={onSaved}/>}
           {activity.cancelled_at ? <InlineNotice tone="neutral">Cancelada. Esta actividad se conserva para consulta; no admite nuevos aportes ni premios.</InlineNotice> : null}
           <div className="section-head">
             <h3>{hasCollectiveReceipts?'Recaudo de la polla':'Participantes'}</h3>

@@ -3,6 +3,31 @@ import seed from '../scripts/seed-polla-audit.mjs';
 import {auditSql} from '../scripts/lib/audit-test-runtime.mjs';
 import {startAuditTrace,finishAuditTrace,expectAuditHttpFailure} from './audit-safe-trace';
 import Decimal from 'decimal.js';
+
+test('derechos colectivos: respuesta perdida y confirmación UI no crean dinero; ganador verificado recibe un premio',async({page},info)=>{
+ await login(page);await activity(page,'colectiva','Marzo');const before=snapshot();
+ await expect(page.getByText('Versión 10',{exact:true})).toBeVisible();
+ const keys:string[]=[];await page.route('**/rest/v1/rpc/confirm_polla_historical_rights',async route=>{keys.push(route.request().postDataJSON().p_key);const response=await route.fetch();if(keys.length===1){await response.body();await route.abort('failed');}else await route.fulfill({response});});
+ await page.getByText('Conciliar derechos históricos sin registrar dinero',{exact:true}).click();
+ for(let i=0;i<10;i++){
+  const name=f.names[i]+' · derecho $10.000';const box=page.getByRole('checkbox',{name,exact:true});await box.check();
+  const row=page.locator('div.list-card').filter({has:box});await row.getByLabel('Fecha de participación respaldada',{exact:true}).fill('2026-03-10');await row.getByLabel('Referencia de verificación individual',{exact:true}).fill('Soporte sintético individual '+i);
+ }
+ await page.getByRole('button',{name:'Previsualizar atribuciones',exact:true}).click();await expect(page.getByRole('status')).toContainText('Nuevos asientos: 0');
+ await page.getByRole('checkbox',{name:'Verifiqué el respaldo de cada persona y período',exact:true}).check();await page.getByRole('button',{name:'Confirmar atribuciones verificadas',exact:true}).click();await expect(page.getByRole('alert')).toContainText('No se pudo verificar el resultado');await page.getByRole('button',{name:'Confirmar atribuciones verificadas',exact:true}).click();await expect(page.getByRole('button',{name:'Confirmar atribuciones verificadas',exact:true})).toHaveCount(0);expect(keys).toHaveLength(2);expect(keys[0]).toBe(keys[1]);await expect(page.getByText('Ver atribuciones confirmadas (10)',{exact:true})).toBeVisible();
+ const attributed=snapshot();for(const table of ['ledger_entries','financial_operations','polla_contributions','polla_prizes','member_settlements'])expect(attributed[table]).toEqual(before[table]);
+ const form=await award(page,0);await form.getByRole('button',{name:'Asignar premio',exact:true}).click();await expect(form).toHaveCount(0);const after=snapshot();expect(after.polla_prizes.find((p:any)=>p.activity_id===f.activities.colectiva)).toMatchObject({admin_commission:5000,net_amount:95000});await evidence(info,'derechos-sin-nuevo-recaudo',before,after);
+});
+
+test('derechos colectivos: confirmaciones concurrentes y reintento no duplican atribución ni ledger',async({page},info)=>{
+ await login(page);const before=snapshot(),source=before.polla_contributions.find((c:any)=>c.activity_id===f.activities.colectiva);
+ const rows=f.ids.slice(0,10).map((id:string)=>({cycle_member_id:id,contribution_id:source.id,amount:10000,eligible_on:'2026-03-10',evidence:'Verificación sintética individual'}));
+ const args={p_activity_id:f.activities.colectiva,p_rows:rows};const preview=await rpc(page,'preview_polla_historical_rights',args);expect(preview.error).toBeNull();
+ expectAuditHttpFailure(page,'/rest/v1/rpc/confirm_polla_historical_rights',400);
+ const calls=['rights-concurrent-a','rights-concurrent-b'];const results=await Promise.all(calls.map(p_key=>rpc(page,'confirm_polla_historical_rights',{...args,p_key,p_preview_hash:preview.data.preview_hash})));
+ expect(results.filter(r=>!r.error)).toHaveLength(1);const key=calls[results.findIndex(r=>!r.error)];expect((await rpc(page,'confirm_polla_historical_rights',{...args,p_key:key,p_preview_hash:preview.data.preview_hash})).error).toBeNull();
+ const after=snapshot();for(const table of ['ledger_entries','financial_operations','polla_contributions','polla_prizes','member_settlements'])expect(after[table]).toEqual(before[table]);await evidence(info,'concurrencia-derechos',before,after);
+});
 let f:any;
 const api='http://127.0.0.1:55421';
 test.beforeEach(async()=>{f=await seed();});
